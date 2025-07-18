@@ -2,155 +2,336 @@ from mcp.server.fastmcp import FastMCP
 import os
 import json
 import re
+import sys
+import platform
+import subprocess
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
-mcp = FastMCP("Universal Project Documenter")
+# Initialize MCP server with clear description
+mcp = FastMCP(
+    "Universal Project Documenter",
+    description="Intelligent documentation generator for any project type. Automatically detects project structure, analyzes dependencies, and generates comprehensive documentation."
+)
 
-# Configuration for different project types
+# Enhanced project type detection with more comprehensive patterns
 PROJECT_CONFIGS = {
     "nextjs": {
-        "indicators": ["next.config.js", "next.config.ts", "package.json"],
-        "check_content": {"package.json": "next"},
-        "important_dirs": ["app", "pages", "components", "src", "public"],
-        "important_files": ["package.json", "README.md", "tsconfig.json", "tailwind.config.js"]
+        "indicators": ["next.config.js", "next.config.ts", "next.config.mjs", "package.json"],
+        "check_content": {"package.json": ["next", "@next/"]},
+        "important_dirs": ["app", "pages", "components", "src", "public", "styles"],
+        "important_files": ["package.json", "README.md", "tsconfig.json", "tailwind.config.js", "next.config.*"],
+        "confidence_boost": 3
     },
     "react": {
         "indicators": ["package.json"],
-        "check_content": {"package.json": "react"},
-        "important_dirs": ["src", "components", "public"],
-        "important_files": ["package.json", "README.md", "tsconfig.json"]
+        "check_content": {"package.json": ["react", "react-dom", "react-scripts", "@types/react"]},
+        "important_dirs": ["src", "components", "public", "build"],
+        "important_files": ["package.json", "README.md", "tsconfig.json", "src/App.*"],
+        "confidence_boost": 2
     },
     "angular": {
         "indicators": ["angular.json", "package.json"],
-        "check_content": {"package.json": "@angular"},
+        "check_content": {"package.json": ["@angular/", "angular"], "angular.json": ["@angular"]},
         "important_dirs": ["src", "app", "components", "services", "modules"],
-        "important_files": ["angular.json", "package.json", "tsconfig.json", "karma.conf.js"]
+        "important_files": ["angular.json", "package.json", "tsconfig.json", "karma.conf.js"],
+        "confidence_boost": 3
     },
     "vue": {
         "indicators": ["vue.config.js", "vite.config.js", "package.json"],
-        "check_content": {"package.json": "vue"},
+        "check_content": {"package.json": ["vue", "@vue/", "nuxt"]},
         "important_dirs": ["src", "components", "views", "router", "store"],
-        "important_files": ["package.json", "vue.config.js", "vite.config.js", "README.md"]
+        "important_files": ["package.json", "vue.config.js", "vite.config.js", "README.md"],
+        "confidence_boost": 2
+    },
+    "svelte": {
+        "indicators": ["svelte.config.js", "package.json"],
+        "check_content": {"package.json": ["svelte", "@sveltejs/"]},
+        "important_dirs": ["src", "static", "build"],
+        "important_files": ["svelte.config.js", "package.json", "README.md"],
+        "confidence_boost": 2
     },
     "nodejs": {
-        "indicators": ["package.json"],
-        "check_content": {"package.json": "node"},
-        "important_dirs": ["src", "lib", "routes", "controllers"],
-        "important_files": ["package.json", "README.md", "index.js", "server.js"]
+        "indicators": ["package.json", "server.js", "app.js", "index.js"],
+        "check_content": {"package.json": ["express", "node", "fastify", "koa"]},
+        "important_dirs": ["src", "lib", "routes", "controllers", "middleware"],
+        "important_files": ["package.json", "README.md", "index.js", "server.js"],
+        "confidence_boost": 1
     },
     "dotnet": {
-        "indicators": [".csproj", ".sln", ".vbproj", ".fsproj", "global.json"],
+        "indicators": [".csproj", ".sln", ".vbproj", ".fsproj", "global.json", "Directory.Build.props"],
         "check_content": {},
-        "important_dirs": ["Controllers", "Views", "Models", "Services", "Data"],
-        "important_files": [".csproj", ".sln", "appsettings.json", "Program.cs", "Startup.cs"]
+        "important_dirs": ["Controllers", "Views", "Models", "Services", "Data", "wwwroot"],
+        "important_files": [".csproj", ".sln", "appsettings.json", "Program.cs", "Startup.cs"],
+        "confidence_boost": 3
     },
     "java": {
-        "indicators": ["pom.xml", "build.gradle", "gradlew", "build.xml"],
-        "check_content": {},
-        "important_dirs": ["src/main/java", "src/test/java", "src/main/resources"],
-        "important_files": ["pom.xml", "build.gradle", "README.md", "application.properties"]
+        "indicators": ["pom.xml", "build.gradle", "gradlew", "build.xml", "settings.gradle"],
+        "check_content": {"pom.xml": ["java", "maven"], "build.gradle": ["java", "kotlin"]},
+        "important_dirs": ["src/main/java", "src/test/java", "src/main/resources", "target", "build"],
+        "important_files": ["pom.xml", "build.gradle", "README.md", "application.properties"],
+        "confidence_boost": 2
     },
     "kotlin": {
         "indicators": ["build.gradle.kts", "settings.gradle.kts", "gradle.properties"],
-        "check_content": {"build.gradle.kts": "kotlin"},
+        "check_content": {"build.gradle.kts": ["kotlin", "org.jetbrains.kotlin"]},
         "important_dirs": ["src/main/kotlin", "src/test/kotlin", "src/main/resources"],
-        "important_files": ["build.gradle.kts", "settings.gradle.kts", "README.md"]
+        "important_files": ["build.gradle.kts", "settings.gradle.kts", "README.md"],
+        "confidence_boost": 2
     },
     "go": {
-        "indicators": ["go.mod", "go.sum", "main.go"],
-        "check_content": {},
-        "important_dirs": ["cmd", "pkg", "internal", "api", "web"],
-        "important_files": ["go.mod", "go.sum", "main.go", "README.md", "Makefile"]
+        "indicators": ["go.mod", "go.sum", "main.go", "Makefile"],
+        "check_content": {"go.mod": ["module ", "go "]},
+        "important_dirs": ["cmd", "pkg", "internal", "api", "web", "docs"],
+        "important_files": ["go.mod", "go.sum", "main.go", "README.md", "Makefile"],
+        "confidence_boost": 2
     },
     "rust": {
-        "indicators": ["Cargo.toml", "Cargo.lock"],
-        "check_content": {},
-        "important_dirs": ["src", "tests", "examples", "benches"],
-        "important_files": ["Cargo.toml", "Cargo.lock", "README.md", "main.rs", "lib.rs"]
+        "indicators": ["Cargo.toml", "Cargo.lock", "src/main.rs", "src/lib.rs"],
+        "check_content": {"Cargo.toml": ["[package]", "edition = "]},
+        "important_dirs": ["src", "tests", "examples", "benches", "target"],
+        "important_files": ["Cargo.toml", "Cargo.lock", "README.md", "main.rs", "lib.rs"],
+        "confidence_boost": 3
     },
     "php": {
-        "indicators": ["composer.json", "composer.lock", "index.php"],
-        "check_content": {},
+        "indicators": ["composer.json", "composer.lock", "index.php", "artisan"],
+        "check_content": {"composer.json": ["php", "laravel", "symfony"]},
         "important_dirs": ["src", "app", "public", "vendor", "tests"],
-        "important_files": ["composer.json", "index.php", "README.md", ".htaccess"]
+        "important_files": ["composer.json", "index.php", "README.md", ".htaccess"],
+        "confidence_boost": 1
     },
     "laravel": {
-        "indicators": ["artisan", "composer.json"],
-        "check_content": {"composer.json": "laravel"},
-        "important_dirs": ["app", "config", "database", "resources", "routes"],
-        "important_files": ["artisan", "composer.json", ".env.example", "webpack.mix.js"]
+        "indicators": ["artisan", "composer.json", "config/app.php"],
+        "check_content": {"composer.json": ["laravel/framework", "laravel"]},
+        "important_dirs": ["app", "config", "database", "resources", "routes", "storage"],
+        "important_files": ["artisan", "composer.json", ".env.example", "webpack.mix.js"],
+        "confidence_boost": 3
+    },
+    "symfony": {
+        "indicators": ["symfony.lock", "composer.json", "bin/console"],
+        "check_content": {"composer.json": ["symfony/"]},
+        "important_dirs": ["src", "config", "templates", "public", "var"],
+        "important_files": ["composer.json", "symfony.lock", "README.md"],
+        "confidence_boost": 3
     },
     "flutter": {
-        "indicators": ["pubspec.yaml", "pubspec.lock"],
-        "check_content": {"pubspec.yaml": "flutter"},
-        "important_dirs": ["lib", "test", "android", "ios", "web"],
-        "important_files": ["pubspec.yaml", "README.md", "analysis_options.yaml"]
+        "indicators": ["pubspec.yaml", "pubspec.lock", "android/", "ios/"],
+        "check_content": {"pubspec.yaml": ["flutter:", "sdk: flutter"]},
+        "important_dirs": ["lib", "test", "android", "ios", "web", "assets"],
+        "important_files": ["pubspec.yaml", "README.md", "analysis_options.yaml"],
+        "confidence_boost": 3
     },
     "swift": {
-        "indicators": ["Package.swift", "*.xcodeproj", "*.xcworkspace"],
-        "check_content": {},
+        "indicators": ["Package.swift", "*.xcodeproj", "*.xcworkspace", "Podfile"],
+        "check_content": {"Package.swift": ["swift-tools-version"]},
         "important_dirs": ["Sources", "Tests", "Package.swift"],
-        "important_files": ["Package.swift", "README.md", "*.swift"]
+        "important_files": ["Package.swift", "README.md", "*.swift"],
+        "confidence_boost": 2
     },
     "ruby": {
-        "indicators": ["Gemfile", "Gemfile.lock", "Rakefile"],
-        "check_content": {},
+        "indicators": ["Gemfile", "Gemfile.lock", "Rakefile", ".ruby-version"],
+        "check_content": {"Gemfile": ["ruby ", "gem "]},
         "important_dirs": ["app", "config", "db", "lib", "test", "spec"],
-        "important_files": ["Gemfile", "Rakefile", "README.md", "config.ru"]
+        "important_files": ["Gemfile", "Rakefile", "README.md", "config.ru"],
+        "confidence_boost": 1
     },
     "rails": {
-        "indicators": ["Gemfile", "config/application.rb"],
-        "check_content": {"Gemfile": "rails"},
+        "indicators": ["Gemfile", "config/application.rb", "bin/rails"],
+        "check_content": {"Gemfile": ["rails", "gem 'rails'"]},
         "important_dirs": ["app", "config", "db", "lib", "test", "spec"],
-        "important_files": ["Gemfile", "Rakefile", "config/routes.rb", "config/application.rb"]
+        "important_files": ["Gemfile", "Rakefile", "config/routes.rb", "config/application.rb"],
+        "confidence_boost": 3
     },
     "python": {
-        "indicators": ["requirements.txt", "pyproject.toml", "setup.py", "poetry.lock"],
-        "check_content": {},
-        "important_dirs": ["src", "lib", "tests", "docs"],
-        "important_files": ["requirements.txt", "README.md", "setup.py", "pyproject.toml"]
+        "indicators": ["requirements.txt", "pyproject.toml", "setup.py", "poetry.lock", "Pipfile"],
+        "check_content": {"pyproject.toml": ["[tool.poetry]", "[build-system]"]},
+        "important_dirs": ["src", "lib", "tests", "docs", "__pycache__"],
+        "important_files": ["requirements.txt", "README.md", "setup.py", "pyproject.toml"],
+        "confidence_boost": 1
     },
     "django": {
-        "indicators": ["manage.py", "requirements.txt"],
-        "check_content": {"requirements.txt": "django"},
-        "important_dirs": ["apps", "static", "templates", "media"],
-        "important_files": ["manage.py", "settings.py", "urls.py", "wsgi.py"]
+        "indicators": ["manage.py", "requirements.txt", "settings.py"],
+        "check_content": {"requirements.txt": ["django", "Django"], "manage.py": ["django"]},
+        "important_dirs": ["apps", "static", "templates", "media", "migrations"],
+        "important_files": ["manage.py", "settings.py", "urls.py", "wsgi.py"],
+        "confidence_boost": 3
     },
     "fastapi": {
-        "indicators": ["main.py", "requirements.txt"],
-        "check_content": {"requirements.txt": "fastapi"},
-        "important_dirs": ["app", "models", "routes", "schemas"],
-        "important_files": ["main.py", "requirements.txt", "README.md"]
+        "indicators": ["main.py", "requirements.txt", "app.py"],
+        "check_content": {"requirements.txt": ["fastapi", "uvicorn"], "main.py": ["FastAPI", "from fastapi"]},
+        "important_dirs": ["app", "models", "routes", "schemas", "tests"],
+        "important_files": ["main.py", "requirements.txt", "README.md"],
+        "confidence_boost": 3
+    },
+    "flask": {
+        "indicators": ["app.py", "requirements.txt", "wsgi.py"],
+        "check_content": {"requirements.txt": ["flask", "Flask"], "app.py": ["Flask", "from flask"]},
+        "important_dirs": ["templates", "static", "blueprints"],
+        "important_files": ["app.py", "requirements.txt", "README.md"],
+        "confidence_boost": 2
     },
     "gradle": {
         "indicators": ["build.gradle", "gradlew", "settings.gradle"],
         "check_content": {},
         "important_dirs": ["src", "build", "gradle"],
-        "important_files": ["build.gradle", "settings.gradle", "gradle.properties"]
+        "important_files": ["build.gradle", "settings.gradle", "gradle.properties"],
+        "confidence_boost": 1
     },
     "maven": {
         "indicators": ["pom.xml"],
-        "check_content": {},
+        "check_content": {"pom.xml": ["<groupId>", "<artifactId>"]},
         "important_dirs": ["src/main", "src/test", "target"],
-        "important_files": ["pom.xml", "README.md"]
+        "important_files": ["pom.xml", "README.md"],
+        "confidence_boost": 2
+    },
+    "docker": {
+        "indicators": ["Dockerfile", "docker-compose.yml", "docker-compose.yaml", ".dockerignore"],
+        "check_content": {"Dockerfile": ["FROM ", "RUN ", "COPY "]},
+        "important_dirs": ["docker", "scripts"],
+        "important_files": ["Dockerfile", "docker-compose.yml", "README.md"],
+        "confidence_boost": 1
+    },
+    "terraform": {
+        "indicators": ["main.tf", "variables.tf", "outputs.tf", "terraform.tfvars"],
+        "check_content": {},
+        "important_dirs": ["modules", "environments"],
+        "important_files": ["main.tf", "variables.tf", "outputs.tf", "README.md"],
+        "confidence_boost": 2
     },
     "generic": {
         "indicators": [],
         "check_content": {},
         "important_dirs": ["src", "lib", "docs"],
-        "important_files": ["README.md"]
+        "important_files": ["README.md"],
+        "confidence_boost": 0
     }
 }
+
+def _get_enhanced_project_detection() -> Tuple[str, Dict]:
+    """Enhanced project detection using multiple strategies"""
+    try:
+        # Try to get the actual working directory from various sources
+        detected_path = None
+        detection_method = "unknown"
+        
+        # Strategy 1: Environment variables (IDE-specific)
+        env_vars = [
+            'CURSOR_CWD', 'VSCODE_CWD', 'WINDSURF_CWD', 'CLAUDE_CWD',
+            'PWD', 'CD', 'INIT_CWD', 'PROJECT_ROOT', 'WORKSPACE_FOLDER',
+            'npm_config_prefix', 'CARGO_MANIFEST_DIR'
+        ]
+        
+        for env_var in env_vars:
+            env_path = os.environ.get(env_var, '')
+            if env_path and Path(env_path).exists():
+                test_path = Path(env_path).resolve()
+                path_str = str(test_path).lower()
+                
+                # Enhanced exclusion logic
+                excluded_patterns = [
+                    'documenter', 'mcps', 'mcp-server', 'system32', 'program files',
+                    'windows/system', '/usr/bin', '/usr/local/bin', 'node_modules',
+                    '.npm', '.yarn', '.pnpm', 'python/site-packages'
+                ]
+                
+                if not any(pattern in path_str for pattern in excluded_patterns):
+                    detected_path = str(test_path)
+                    detection_method = f"environment variable '{env_var}'"
+                    break
+        
+        # Strategy 2: Process tree analysis
+        if not detected_path:
+            try:
+                import psutil
+                current_process = psutil.Process()
+                
+                # Check parent processes for IDE patterns
+                parent = current_process.parent()
+                while parent and parent.pid != 1:
+                    try:
+                        name = parent.name().lower()
+                        if any(ide in name for ide in ['cursor', 'code', 'windsurf', 'claude', 'vscode']):
+                            cwd = parent.cwd()
+                            if cwd and Path(cwd).exists():
+                                detected_path = cwd
+                                detection_method = f"parent process ({parent.name()}) working directory"
+                                break
+                        parent = parent.parent()
+                    except:
+                        break
+            except ImportError:
+                pass
+        
+        # Strategy 3: Git repository detection
+        if not detected_path:
+            current_dir = Path.cwd().resolve()
+            for parent in [current_dir] + list(current_dir.parents)[:5]:
+                if (parent / '.git').exists():
+                    parent_str = str(parent).lower()
+                    if not any(pattern in parent_str for pattern in ['documenter', 'mcps']):
+                        detected_path = str(parent)
+                        detection_method = "git repository root"
+                        break
+        
+        # Strategy 4: Project indicators search
+        if not detected_path:
+            current_dir = Path.cwd().resolve()
+            for parent in [current_dir] + list(current_dir.parents)[:3]:
+                indicators_found = 0
+                for project_type, config in PROJECT_CONFIGS.items():
+                    if project_type == "generic":
+                        continue
+                    
+                    for indicator in config["indicators"]:
+                        if "*" in indicator:
+                            if list(parent.glob(indicator)):
+                                indicators_found += 1
+                        elif (parent / indicator).exists():
+                            indicators_found += 1
+                
+                if indicators_found >= 2:  # Need at least 2 indicators for confidence
+                    parent_str = str(parent).lower()
+                    if not any(pattern in parent_str for pattern in ['documenter', 'mcps']):
+                        detected_path = str(parent)
+                        detection_method = "project indicators"
+                        break
+        
+        # Strategy 5: Fallback with validation
+        if not detected_path:
+            cwd = Path.cwd().resolve()
+            cwd_str = str(cwd).lower()
+            if not any(pattern in cwd_str for pattern in ['documenter', 'mcps']):
+                detected_path = str(cwd)
+                detection_method = "current working directory"
+            else:
+                # Try parent directory as last resort
+                parent = cwd.parent
+                detected_path = str(parent)
+                detection_method = "parent directory fallback"
+        
+        return detected_path or str(Path.cwd()), detection_method
+        
+    except Exception as e:
+        return str(Path.cwd()), f"error fallback: {e}"
 
 @mcp.tool()
 def detect_project_type(base_path: str = ".") -> str:
     """
-    Automatically detect the type of project (Next.js, React, Node.js, Python, etc.)
+    Automatically detect the type of project with enhanced accuracy
+    Supports 25+ project types including React, Next.js, Angular, Vue, Python, .NET, Java, etc.
     """
     try:
+        # Use enhanced path detection if no specific path provided
+        if base_path == ".":
+            base_path, detection_method = _get_enhanced_project_detection()
+        else:
+            detection_method = "specified path"
+        
         base_path = Path(base_path).resolve()
         detected_types = []
+        
+        if not base_path.exists():
+            return f"❌ Path does not exist: {base_path}"
         
         for project_type, config in PROJECT_CONFIGS.items():
             if project_type == "generic":
@@ -159,10 +340,9 @@ def detect_project_type(base_path: str = ".") -> str:
             score = 0
             found_indicators = []
             
-            # Check for indicator files
+            # Check for indicator files with enhanced matching
             for indicator in config["indicators"]:
-                if "*" in indicator:  # Handle wildcards like *.xcodeproj
-                    import glob
+                if "*" in indicator:  # Handle wildcards
                     matches = list(base_path.glob(indicator))
                     if matches:
                         found_indicators.append(f"{indicator} ({len(matches)} files)")
@@ -171,18 +351,24 @@ def detect_project_type(base_path: str = ".") -> str:
                     found_indicators.append(indicator)
                     score += 2
             
-            # Check file contents for specific keywords
-            for file_to_check, content_key in config["check_content"].items():
+            # Check file contents for specific keywords with enhanced logic
+            for file_to_check, content_keys in config["check_content"].items():
                 file_path = base_path / file_to_check
-                if file_path.exists():
+                if file_path.exists() and file_path.is_file():
                     try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                             content = f.read().lower()
-                            if content_key.lower() in content:
-                                score += 3
-                                found_indicators.append(f"{file_to_check} (contains '{content_key}')")
-                    except:
-                        pass
+                            
+                        if isinstance(content_keys, list):
+                            matched_keys = [key for key in content_keys if key.lower() in content]
+                            if matched_keys:
+                                score += len(matched_keys) * 2  # More matches = higher score
+                                found_indicators.append(f"{file_to_check} (contains {', '.join(matched_keys)})")
+                        elif isinstance(content_keys, str) and content_keys.lower() in content:
+                            score += 3
+                            found_indicators.append(f"{file_to_check} (contains '{content_keys}')")
+                    except Exception:
+                        pass  # Skip files that can't be read
             
             # Check for important directories
             dir_score = 0
@@ -193,7 +379,10 @@ def detect_project_type(base_path: str = ".") -> str:
                     dir_score += 1
             
             if dir_score > 0:
-                score += min(dir_score, 3)  # Cap directory score at 3
+                score += min(dir_score, 4)  # Cap directory score at 4
+            
+            # Apply confidence boost
+            score += config.get("confidence_boost", 0)
             
             # Only consider if we found some indicators
             if score > 0:
@@ -201,34 +390,87 @@ def detect_project_type(base_path: str = ".") -> str:
                     'type': project_type,
                     'score': score,
                     'indicators': found_indicators,
-                    'directories': found_dirs
+                    'directories': found_dirs,
+                    'confidence': _calculate_confidence(score, len(found_indicators), len(found_dirs))
                 })
         
         # Sort by score (highest first)
         detected_types.sort(key=lambda x: x['score'], reverse=True)
         
         if not detected_types:
-            return "Detected project type: GENERIC\nNo specific framework detected"
+            return f"Detected project type: GENERIC\nPath analyzed: {base_path}\nDetection method: {detection_method}\nNo specific framework detected"
         
-        # Build result
+        # Build enhanced result
         result = []
         primary_type = detected_types[0]
+        
         result.append(f"Detected project type: {primary_type['type'].upper()}")
-        result.append(f"Confidence Score: {primary_type['score']}")
-        result.append(f"Indicators found: {', '.join(primary_type['indicators'])}")
+        result.append(f"Confidence Score: {primary_type['score']} ({primary_type['confidence']})")
+        result.append(f"Path analyzed: {base_path}")
+        result.append(f"Detection method: {detection_method}")
+        
+        if primary_type['indicators']:
+            result.append(f"Indicators found: {', '.join(primary_type['indicators'])}")
         
         if primary_type['directories']:
             result.append(f"Relevant directories: {', '.join(primary_type['directories'])}")
         
-        # Show other possible types if score is close
-        if len(detected_types) > 1 and detected_types[1]['score'] >= primary_type['score'] * 0.7:
+        # Show other possible types if score is competitive
+        strong_alternatives = [t for t in detected_types[1:] if t['score'] >= primary_type['score'] * 0.6]
+        if strong_alternatives:
             result.append("\nOther possible types:")
-            for other_type in detected_types[1:3]:  # Show up to 2 alternatives
-                result.append(f"- {other_type['type'].upper()} (score: {other_type['score']})")
+            for alt_type in strong_alternatives[:3]:  # Show up to 3 alternatives
+                result.append(f"- {alt_type['type'].upper()} (score: {alt_type['score']}, {alt_type['confidence']})")
+        
+        # Add helpful context
+        result.append(f"\nFramework ecosystem: {_get_ecosystem_info(primary_type['type'])}")
         
         return '\n'.join(result)
     except Exception as e:
-        return f"Error detecting project type: {e}"
+        return f"Error detecting project type: {e}\nPath: {base_path}\nDetection method: {detection_method if 'detection_method' in locals() else 'unknown'}"
+
+def _calculate_confidence(score: int, indicators: int, directories: int) -> str:
+    """Calculate confidence level based on detection metrics"""
+    if score >= 10 and indicators >= 3:
+        return "Very High"
+    elif score >= 7 and indicators >= 2:
+        return "High"
+    elif score >= 4 and indicators >= 1:
+        return "Medium"
+    elif score >= 2:
+        return "Low"
+    else:
+        return "Very Low"
+
+def _get_ecosystem_info(project_type: str) -> str:
+    """Get ecosystem information for the detected project type"""
+    ecosystems = {
+        "nextjs": "React-based full-stack framework with SSR/SSG",
+        "react": "Frontend library for building user interfaces",
+        "angular": "Full-featured frontend framework by Google",
+        "vue": "Progressive frontend framework",
+        "svelte": "Compile-time frontend framework",
+        "nodejs": "JavaScript runtime for server-side development",
+        "dotnet": "Microsoft's cross-platform development framework",
+        "java": "Enterprise-grade object-oriented programming",
+        "kotlin": "Modern JVM language, Android development",
+        "go": "Google's systems programming language",
+        "rust": "Systems programming with memory safety",
+        "php": "Server-side scripting language",
+        "laravel": "PHP web application framework",
+        "symfony": "PHP framework for enterprise applications",
+        "flutter": "Google's UI toolkit for mobile/web/desktop",
+        "swift": "Apple's programming language for iOS/macOS",
+        "ruby": "Dynamic object-oriented programming language",
+        "rails": "Ruby web application framework",
+        "python": "General-purpose programming language",
+        "django": "Python web framework for rapid development",
+        "fastapi": "Modern Python API framework",
+        "flask": "Lightweight Python web framework",
+        "docker": "Containerization platform",
+        "terraform": "Infrastructure as Code tool"
+    }
+    return ecosystems.get(project_type.lower(), "General development project")
 
 @mcp.tool()
 def read_file(file_path: str) -> str:
@@ -1500,163 +1742,130 @@ def auto_detect_user_project(hint_path: str = "") -> str:
 @mcp.tool()
 def document_project_comprehensive(project_path: str = "") -> str:
     """
-    Complete project documentation workflow - detects project, analyzes structure, and generates documentation
-    If project_path is not provided, attempts to auto-detect the user's current project
+    Complete project documentation workflow with enhanced detection and analysis
+    Automatically detects any project type and generates comprehensive documentation
     """
     try:
-        # Step 1: Determine the project path with enhanced detection
+        # Step 1: Enhanced project path detection
         if not project_path:
-            # Try multiple methods to detect the user's actual project directory
-            detected_path = None
-            
-            # Method 1: Check environment variables that Cursor/IDEs might set
-            env_vars_to_check = [
-                'CURSOR_CWD',          # Cursor IDE working directory
-                'VSCODE_CWD',          # VS Code working directory  
-                'PWD',                 # Current working directory (Unix)
-                'CD',                  # Current directory (Windows)
-                'INIT_CWD',            # Initial working directory
-                'PROJECT_ROOT',        # Some IDEs set this
-                'WORKSPACE_FOLDER',    # Workspace folder
-            ]
-            
-            for env_var in env_vars_to_check:
-                env_path = os.environ.get(env_var, '')
-                if env_path and Path(env_path).exists():
-                    test_path = Path(env_path).resolve()
-                    # Don't use the MCP server's own directory or system directories
-                    path_str = str(test_path).lower()
-                    if (not path_str.endswith('documenter') and 
-                        not path_str.endswith('mcps') and
-                        not 'system32' in path_str and
-                        not 'program files' in path_str):
-                        detected_path = str(test_path)
-                        break
-            
-            # Method 2: Try to detect from the calling process working directory
-            if not detected_path:
-                try:
-                    import psutil
-                    current_process = psutil.Process()
-                    parent_process = current_process.parent()
-                    if parent_process and parent_process.name().lower() in ['cursor.exe', 'code.exe', 'cursor', 'code']:
-                        cwd = parent_process.cwd()
-                        if cwd and Path(cwd).exists():
-                            detected_path = cwd
-                except:
-                    pass  # psutil not available or other error
-            
-            # Method 3: Check current working directory as fallback
-            if not detected_path:
-                cwd = Path.cwd().resolve()
-                cwd_str = str(cwd).lower()
-                if (not cwd_str.endswith('documenter') and 
-                    not cwd_str.endswith('mcps')):
-                    detected_path = str(cwd)
-            
-            # Method 4: Look for common project indicators in parent directories
-            if not detected_path:
-                current_dir = Path.cwd().resolve()
-                for parent in [current_dir] + list(current_dir.parents)[:3]:  # Check up to 3 levels up
-                    if any((parent / indicator).exists() for indicator in [
-                        'package.json', 'pyproject.toml', 'requirements.txt', 'pom.xml',
-                        'Cargo.toml', 'go.mod', 'composer.json', '.git', '.gitignore'
-                    ]):
-                        parent_str = str(parent).lower()
-                        if (not parent_str.endswith('documenter') and 
-                            not parent_str.endswith('mcps')):
-                            detected_path = str(parent)
-                            break
-            
-            project_path = detected_path or "."
+            detected_path, detection_method = _get_enhanced_project_detection()
+            project_path = detected_path
+        else:
+            detection_method = "explicitly specified"
         
         base_path = Path(project_path).resolve()
         
         results = []
-        results.append("# 🚀 Comprehensive Project Documentation")
-        results.append("=" * 60)
-        results.append(f"📁 Analyzing project at: {base_path}")
-        
-        # Show detection method used
-        if not project_path or project_path == ".":
-            results.append(f"🔍 Auto-detected project directory")
-        else:
-            results.append(f"📍 Using specified project path")
+        results.append("# 🚀 Universal Project Documentation")
+        results.append("=" * 70)
+        results.append(f"📁 Project Location: {base_path}")
+        results.append(f"🔍 Detection Method: {detection_method}")
+        results.append(f"🖥️  Platform: {platform.system()} {platform.release()}")
+        results.append(f"🐍 Python: {sys.version.split()[0]}")
         results.append("")
         
         if not base_path.exists():
-            return f"❌ Project path does not exist: {base_path}"
+            return f"❌ Project path does not exist: {base_path}\nDetection method: {detection_method}"
         
-        # Verify this looks like a real project directory
+        # Validate this is a real project directory
         project_files = list(base_path.iterdir()) if base_path.is_dir() else []
-        has_project_indicators = any(
-            (base_path / indicator).exists() for indicator in [
-                'package.json', 'pyproject.toml', 'requirements.txt', 'pom.xml',
-                'Cargo.toml', 'go.mod', 'composer.json', '.git', '.gitignore',
-                'src', 'app', 'lib', 'components', 'pages'
-            ]
+        project_indicators = [
+            'package.json', 'pyproject.toml', 'requirements.txt', 'pom.xml',
+            'Cargo.toml', 'go.mod', 'composer.json', '.git', '.gitignore',
+            'src', 'app', 'lib', 'components', 'pages', 'Dockerfile'
+        ]
+        
+        has_indicators = any(
+            (base_path / indicator).exists() for indicator in project_indicators
         )
         
-        if not has_project_indicators and len(project_files) < 3:
-            results.append("⚠️ Warning: This doesn't appear to be a project directory.")
-            results.append("💡 Try specifying the project path explicitly in your prompt:")
-            results.append("   'Document the project at /path/to/your/project comprehensively'")
+        if not has_indicators and len(project_files) < 3:
+            results.append("⚠️  Warning: This doesn't appear to be a typical project directory.")
+            results.append("💡 Suggestion: Ensure you're in the correct project folder, or specify the path explicitly:")
+            results.append("   Example: 'Document the project at /path/to/your/project comprehensively'")
             results.append("")
         
-        # Continue with the rest of the analysis...
-        # Step 2: Detect project type
-        results.append("## 🔍 Step 1: Project Type Detection")
-        results.append("-" * 40)
+        # Step 2: Enhanced project type detection
+        results.append("## 🔍 Step 1: Enhanced Project Type Detection")
+        results.append("-" * 50)
         try:
             project_type_result = detect_project_type(str(base_path))
             results.append(project_type_result)
         except Exception as e:
-            results.append(f"❌ Error detecting project type: {e}")
+            results.append(f"❌ Error in project type detection: {e}")
+            results.append("📝 Continuing with generic analysis...")
         results.append("")
         
-        # Step 3: Analyze project structure  
+        # Step 3: Comprehensive project structure analysis
         results.append("## 📊 Step 2: Project Structure Analysis")
-        results.append("-" * 40)
+        results.append("-" * 50)
         try:
             structure_result = analyze_project_structure(str(base_path))
             results.append(structure_result)
         except Exception as e:
-            results.append(f"❌ Error analyzing structure: {e}")
+            results.append(f"❌ Error in structure analysis: {e}")
         results.append("")
         
-        # Step 4: Analyze configuration files
-        results.append("## ⚙️ Step 3: Configuration Analysis")
-        results.append("-" * 40)
+        # Step 4: Multi-format configuration analysis
+        results.append("## ⚙️ Step 3: Configuration Files Analysis")
+        results.append("-" * 50)
         
-        config_files = [
-            "package.json", "pyproject.toml", "requirements.txt", "pom.xml", 
-            "Cargo.toml", "composer.json", "go.mod", "pubspec.yaml", 
-            "Gemfile", "build.gradle"
-        ]
+        config_patterns = {
+            "Node.js/JavaScript": ["package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"],
+            "Python": ["pyproject.toml", "requirements.txt", "setup.py", "poetry.lock", "Pipfile"],
+            "Java/Kotlin": ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle"],
+            ".NET": ["*.csproj", "*.sln", "global.json", "Directory.Build.props"],
+            "Go": ["go.mod", "go.sum"],
+            "Rust": ["Cargo.toml", "Cargo.lock"],
+            "PHP": ["composer.json", "composer.lock"],
+            "Ruby": ["Gemfile", "Gemfile.lock"],
+            "Flutter/Dart": ["pubspec.yaml", "pubspec.lock"],
+            "Swift": ["Package.swift"],
+            "Docker": ["Dockerfile", "docker-compose.yml", "docker-compose.yaml"],
+            "Infrastructure": ["terraform.tf", "main.tf", "variables.tf"]
+        }
         
         found_configs = []
-        for config_file in config_files:
-            config_path = base_path / config_file
-            if config_path.exists():
-                found_configs.append(config_file)
-                try:
-                    if config_file == "package.json":
-                        config_result = analyze_package_json(str(config_path))
-                    else:
-                        config_result = analyze_project_config(str(config_path))
-                    results.append(f"### {config_file}")
-                    results.append(config_result)
-                    results.append("")
-                except Exception as e:
-                    results.append(f"❌ Error analyzing {config_file}: {e}")
+        for category, config_files in config_patterns.items():
+            category_files = []
+            for config_file in config_files:
+                if "*" in config_file:
+                    matches = list(base_path.glob(config_file))
+                    if matches:
+                        category_files.extend([m.name for m in matches])
+                else:
+                    if (base_path / config_file).exists():
+                        category_files.append(config_file)
+            
+            if category_files:
+                results.append(f"### {category}")
+                for config_file in category_files:
+                    config_path = base_path / config_file
+                    if config_path.exists():
+                        found_configs.append(config_file)
+                        try:
+                            if config_file == "package.json":
+                                config_result = analyze_package_json(str(config_path))
+                            else:
+                                config_result = analyze_project_config(str(config_path))
+                            
+                            # Truncate very long results
+                            if len(config_result) > 3000:
+                                config_result = config_result[:3000] + "\n... (truncated for brevity)"
+                            
+                            results.append(config_result)
+                        except Exception as e:
+                            results.append(f"❌ Error analyzing {config_file}: {e}")
+                results.append("")
         
         if not found_configs:
-            results.append("ℹ️ No configuration files found to analyze")
+            results.append("ℹ️ No standard configuration files found")
+            results.append("This might be a generic project or use custom configuration")
         results.append("")
         
-        # Step 5: Code metrics
-        results.append("## 📈 Step 4: Code Metrics")
-        results.append("-" * 40)
+        # Step 5: Code metrics and technology analysis
+        results.append("## 📈 Step 4: Code Metrics & Technology Analysis")
+        results.append("-" * 50)
         try:
             metrics_result = analyze_code_metrics(str(base_path))
             results.append(metrics_result)
@@ -1664,41 +1873,136 @@ def document_project_comprehensive(project_path: str = "") -> str:
             results.append(f"❌ Error analyzing code metrics: {e}")
         results.append("")
         
-        # Step 6: Generate README
-        results.append("## 📝 Step 5: README Generation")
-        results.append("-" * 40)
+        # Step 6: Development workflow analysis
+        results.append("## 🛠️ Step 5: Development Workflow Analysis")
+        results.append("-" * 50)
+        try:
+            workflow_info = _analyze_development_workflow(base_path)
+            results.append(workflow_info)
+        except Exception as e:
+            results.append(f"❌ Error analyzing workflow: {e}")
+        results.append("")
+        
+        # Step 7: README generation
+        results.append("## 📝 Step 6: Comprehensive README Generation")
+        results.append("-" * 50)
         try:
             readme_result = generate_project_readme(str(base_path))
             
-            # Optionally write the README file
+            # Save the README file
             readme_path = base_path / "README_GENERATED.md"
             with open(readme_path, 'w', encoding='utf-8') as f:
                 f.write(readme_result)
             
             results.append(f"✅ README generated and saved to: {readme_path}")
             results.append("")
-            results.append("### Generated README Preview:")
+            results.append("### 📖 Generated README Preview (first 1000 characters):")
+            results.append("```markdown")
             results.append(readme_result[:1000] + "..." if len(readme_result) > 1000 else readme_result)
+            results.append("```")
         except Exception as e:
             results.append(f"❌ Error generating README: {e}")
         results.append("")
         
-        # Step 7: Summary
-        results.append("## ✅ Documentation Complete!")
-        results.append("-" * 40)
-        results.append(f"📁 Project analyzed: {base_path}")
-        results.append(f"⚙️ Config files found: {len(found_configs)}")
-        results.append(f"📄 README generated: README_GENERATED.md")
+        # Step 8: Summary and recommendations
+        results.append("## ✅ Documentation Summary")
+        results.append("-" * 50)
+        results.append(f"📁 **Project Analyzed**: {base_path}")
+        results.append(f"🔍 **Detection Method**: {detection_method}")
+        results.append(f"⚙️ **Config Files Found**: {len(found_configs)}")
+        results.append(f"📄 **Documentation Generated**: README_GENERATED.md")
         results.append("")
-        results.append("🎉 Your project documentation is ready!")
+        
+        # Provide next steps
+        results.append("## 🎯 Next Steps & Recommendations")
+        results.append("-" * 50)
+        next_steps = _get_project_recommendations(base_path, found_configs)
+        results.append(next_steps)
+        results.append("")
+        
+        results.append("🎉 **Universal project documentation completed successfully!**")
+        results.append("")
+        results.append("💡 **Tip**: You can now use the generated README_GENERATED.md as a starting point")
+        results.append("for your project documentation, or ask for specific component analysis.")
         
         return '\n'.join(results)
         
     except Exception as e:
-        return f"Error in comprehensive documentation: {e}"
+        return f"❌ Critical error in comprehensive documentation: {e}\n\nPlease try specifying the project path explicitly:\n'Document the project at /absolute/path/to/project comprehensively'"
+
+def _analyze_development_workflow(base_path: Path) -> str:
+    """Analyze development workflow based on project structure and files"""
+    workflow_info = []
+    
+    # Check for CI/CD
+    ci_files = ['.github/workflows', '.gitlab-ci.yml', 'azure-pipelines.yml', 'Jenkinsfile', '.circleci']
+    found_ci = [ci for ci in ci_files if (base_path / ci).exists()]
+    
+    if found_ci:
+        workflow_info.append(f"🔄 **CI/CD Detected**: {', '.join(found_ci)}")
+    
+    # Check for testing
+    test_indicators = ['test', 'tests', '__tests__', 'spec', 'specs']
+    test_dirs = [td for td in test_indicators if (base_path / td).exists()]
+    
+    if test_dirs:
+        workflow_info.append(f"🧪 **Testing Structure**: {', '.join(test_dirs)}")
+    
+    # Check for documentation
+    doc_indicators = ['docs', 'documentation', 'README.md', 'CONTRIBUTING.md']
+    doc_files = [doc for doc in doc_indicators if (base_path / doc).exists()]
+    
+    if doc_files:
+        workflow_info.append(f"📚 **Documentation**: {', '.join(doc_files)}")
+    
+    # Check for containerization
+    container_files = ['Dockerfile', 'docker-compose.yml', '.dockerignore']
+    container_found = [cf for cf in container_files if (base_path / cf).exists()]
+    
+    if container_found:
+        workflow_info.append(f"🐳 **Containerization**: {', '.join(container_found)}")
+    
+    # Check for environment management
+    env_files = ['.env.example', '.env.template', '.env.local', 'config']
+    env_found = [ef for ef in env_files if (base_path / ef).exists()]
+    
+    if env_found:
+        workflow_info.append(f"🌍 **Environment Config**: {', '.join(env_found)}")
+    
+    return '\n'.join(workflow_info) if workflow_info else "ℹ️ Standard development workflow detected"
+
+def _get_project_recommendations(base_path: Path, found_configs: List[str]) -> str:
+    """Generate recommendations based on project analysis"""
+    recommendations = []
+    
+    # Generic recommendations
+    if not (base_path / 'README.md').exists():
+        recommendations.append("📝 Consider creating a comprehensive README.md")
+    
+    if not (base_path / '.gitignore').exists():
+        recommendations.append("🚫 Add a .gitignore file for your project type")
+    
+    if not (base_path / 'LICENSE').exists():
+        recommendations.append("⚖️ Consider adding a LICENSE file")
+    
+    # Technology-specific recommendations
+    if any('package.json' in config for config in found_configs):
+        if not (base_path / '.nvmrc').exists():
+            recommendations.append("🔧 Consider adding .nvmrc for Node.js version management")
+        if not (base_path / 'tsconfig.json').exists() and 'typescript' in str(found_configs).lower():
+            recommendations.append("📘 Consider adding TypeScript configuration")
+    
+    if any('requirements.txt' in config or 'pyproject.toml' in config for config in found_configs):
+        if not (base_path / '.python-version').exists():
+            recommendations.append("🐍 Consider adding .python-version for Python version management")
+    
+    if any('.csproj' in config or '.sln' in config for config in found_configs):
+        if not (base_path / '.editorconfig').exists():
+            recommendations.append("📝 Consider adding .editorconfig for consistent coding style")
+    
+    return '\n'.join(f"• {rec}" for rec in recommendations) if recommendations else "✅ Project structure looks comprehensive!"
 
 if __name__ == "__main__":
-    import sys
     # Log to stderr instead of stdout to avoid interfering with MCP protocol
     cwd = os.getcwd()
     print(f"🚀 Universal Project Documenter starting from: {cwd}", file=sys.stderr)
