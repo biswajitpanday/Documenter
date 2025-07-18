@@ -1,9 +1,64 @@
 [project]
-name = "documenter"
-version = "0.1.0"
-description = "Add your description here"
+name = "universal-project-documenter"
+version = "1.0.0"
+description = "A Model Context Protocol (MCP) server that provides intelligent documentation tools for any project type. Automatically detects project structure, analyzes dependencies, and generates comprehensive documentation."
 readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Universal Project Documenter", email = "contact@example.com" }
+]
+keywords = ["mcp", "documentation", "project-analysis", "code-documentation", "universal"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]>=1.11.0",
+    "pyyaml>=6.0",
+    "tomli>=2.0.0; python_version<'3.11'",
+    "psutil>=5.9.0; platform_system!='wasm'",
+]
+
+[project.scripts]
+universal-project-documenter = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/your-username/universal-project-documenter"
+Repository = "https://github.com/your-username/universal-project-documenter"
+Issues = "https://github.com/your-username/universal-project-documenter/issues"
+Documentation = "https://github.com/your-username/universal-project-documenter#readme"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+exclude = [
+    "/.github",
+    "/docs", 
+    "/.gitignore",
+    "/test_documenter.py",
+    "*.bat",
+    "*.sh"
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.github",
+    "/docs",
+    "/.gitignore",
+    "/test_documenter.py",
+    "*.bat", 
+    "*.sh"
 ]

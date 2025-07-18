@@ -13,15 +13,22 @@ A Model Context Protocol (MCP) server that provides intelligent documentation to
 
 ## Tools Available
 
-1. **detect_project_type** - Automatically identify project framework and type
-2. **read_file** - Read any file with absolute or relative paths
-3. **write_file** - Create or update files with automatic directory creation
-4. **read_filenames_in_directory** - List directory contents
-5. **analyze_project_structure** - Complete project architecture analysis
-6. **analyze_package_json** - Comprehensive package.json analysis with recommendations
-7. **generate_component_documentation** - Detailed component documentation
-8. **generate_project_readme** - Auto-generate comprehensive README files
-9. **get_current_working_directory** - Get server's current working directory
+1. **🚀 document_project_comprehensive** - **NEW!** Complete workflow that auto-detects your project and generates full documentation
+2. **🔍 auto_detect_user_project** - **NEW!** Smart detection of your actual project directory (not MCP server directory)
+3. **detect_project_type** - Automatically identify project framework and type
+4. **read_file** - Read any file with absolute or relative paths
+5. **write_file** - Create or update files with automatic directory creation
+6. **read_filenames_in_directory** - List directory contents
+7. **analyze_project_structure** - Complete project architecture analysis
+8. **analyze_package_json** - Comprehensive package.json analysis with recommendations
+9. **analyze_project_config** - **NEW!** Analyze any config file (pom.xml, Cargo.toml, composer.json, etc.)
+10. **generate_component_documentation** - Detailed component documentation
+11. **generate_project_readme** - Auto-generate comprehensive README files
+12. **batch_read_files** - **NEW!** Read multiple files at once
+13. **find_files_by_pattern** - **NEW!** Search files with wildcards (*.js, **/*.py, etc.)
+14. **analyze_code_metrics** - **NEW!** Code statistics and technology distribution analysis
+15. **scan_for_todos_and_fixmes** - **NEW!** Find TODO, FIXME, HACK comments in codebase
+16. **get_cursor_working_directory** - Get Cursor's current working directory
 
 ## Prerequisites
 
@@ -78,11 +85,41 @@ A Model Context Protocol (MCP) server that provides intelligent documentation to
 
 Once configured in Cursor, you can use natural language to:
 
+- **"I need comprehensive documentation for this codebase including project type detection and README generation"** - Complete workflow with auto-detection
+- **"Document my entire project comprehensively"** - Full analysis and documentation generation
 - **"Analyze this project structure"** - Get detailed architecture overview
 - **"Generate documentation for this component"** - Create component docs
 - **"Create a README for this project"** - Auto-generate comprehensive README
 - **"What type of project is this?"** - Identify framework and technologies
 - **"Analyze the package.json file"** - Get dependency insights and recommendations
+- **"Show me code metrics and technology distribution"** - Get detailed statistics
+- **"Find all TODO comments in the codebase"** - Scan for code annotations
+
+## 🎯 **Smart Project Detection**
+
+**NEW!** The documenter now intelligently detects **your** project directory (not the MCP server's directory):
+
+### ✅ **Recommended Usage**
+```
+"I need comprehensive documentation for this codebase including project type detection and README generation"
+```
+This triggers the **complete workflow** that:
+1. 🔍 Auto-detects your actual project directory
+2. 📊 Analyzes project type and structure  
+3. ⚙️ Examines configuration files
+4. 📈 Generates code metrics
+5. 📝 Creates comprehensive README
+6. 💾 Saves documentation to your project folder
+
+### 🎯 **For Specific Projects**
+```
+"Document the project at C:\path\to\your\project comprehensively"
+"Analyze project structure for the codebase at /absolute/path"
+```
+
+### 📚 **See Also**
+- 📖 **[USAGE_GUIDE.md](USAGE_GUIDE.md)** - Comprehensive usage examples and troubleshooting
+- 🧪 **[test_portfolio.py](test_portfolio.py)** - Example of documenting a different project
 
 ## Example Outputs
 
