@@ -1,0 +1,9 @@
+{
+  "mcp.servers": {
+    "documenter": {
+      "command": "C:\\D\\RnD\\biswajitpanday.github.io\\Documenter\\run_mcp.bat",
+      "args": [],
+      "cwd": "C:\\D\\RnD\\biswajitpanday.github.io\\Documenter"
+    }
+  }
+} 
