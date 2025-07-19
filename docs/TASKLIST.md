@@ -158,23 +158,25 @@
   - [x] Update code comments
   - [x] Clean up inline documentation
 
-### **Local MCP Server Implementation** (Priority: CRITICAL)
-- [ ] **Local Server Development**
-  - [ ] Create local MCP server using FastMCP
-  - [ ] Extract and port tools from current server.py
-  - [ ] Implement local file system access
-  - [ ] Add proper error handling for local files
-  - [ ] Test with local projects (Next.js, React, Python, etc.)
-- [ ] **Cursor IDE Integration**
-  - [ ] Update Cursor configuration for local command
-  - [ ] Test local integration with Cursor IDE
-  - [ ] Create installation guide for local setup
-  - [ ] Ensure simple prompts work ("Document this project")
-- [ ] **Distribution & Migration**
-  - [ ] Create pip package for easy installation
-  - [ ] Create Docker image for containerized deployment
-  - [ ] Update all documentation for local usage
-  - [ ] Migrate users from cloud version to local version
+### **Cloud-Based Natural Language Enhancement** (Priority: CRITICAL)
+- [ ] **Smart Project Context Detection**
+  - [ ] Implement MCP context extraction from requests
+  - [ ] Add intelligent default project path detection
+  - [ ] Create fallback mechanisms for project context
+  - [ ] Add project context validation and guidance
+  - [ ] Test with natural language commands
+- [ ] **Enhanced User Experience**
+  - [ ] Update tool descriptions for natural language usage
+  - [ ] Add helpful error messages and guidance
+  - [ ] Implement smart defaults for common scenarios
+  - [ ] Create user-friendly response formats
+  - [ ] Test with "Document this project" type commands
+- [ ] **Cloud Server Optimization**
+  - [ ] Optimize cloud server for natural language requests
+  - [ ] Add request context analysis
+  - [ ] Implement smart project boundary detection
+  - [ ] Add usage analytics and monitoring
+  - [ ] Ensure cloud version works seamlessly
 
 ### **Performance Optimization**
 - [ ] Add response caching

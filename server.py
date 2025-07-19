@@ -112,7 +112,20 @@ class MCPHandler(BaseHTTPRequestHandler):
                     # For now, we'll use a fallback approach
                     pass
             
-            # Method 2: Try to detect from environment variables
+            # Method 2: Try to detect from MCP context in request
+            # Check if there's any context information in the request
+            if hasattr(self, 'request_context') and self.request_context:
+                context_path = self.request_context.get('project_path') or self.request_context.get('workspace_path')
+                if context_path and Path(context_path).exists():
+                    return Path(context_path).resolve()
+            
+            # Method 3: Try to detect from request headers (if available)
+            # Some IDEs might send project path in headers
+            project_header = self.headers.get('X-Project-Path') or self.headers.get('X-Workspace-Path')
+            if project_header and Path(project_header).exists():
+                return Path(project_header).resolve()
+            
+            # Method 4: Try to detect from environment variables
             env_vars = [
                 'CURSOR_CWD', 'VSCODE_CWD', 'WINDSURF_CWD', 'CLAUDE_CWD',
                 'PWD', 'CD', 'INIT_CWD', 'PROJECT_ROOT', 'WORKSPACE_FOLDER'
@@ -127,13 +140,7 @@ class MCPHandler(BaseHTTPRequestHandler):
                     if not any(pattern in path_str for pattern in ['documenter', 'mcps', 'render', 'opt/render']):
                         return test_path
             
-            # Method 3: Try to detect from request headers (if available)
-            # Some IDEs might send project path in headers
-            project_header = self.headers.get('X-Project-Path') or self.headers.get('X-Workspace-Path')
-            if project_header and Path(project_header).exists():
-                return Path(project_header).resolve()
-            
-            # Method 4: Fallback - use current working directory but warn
+            # Method 5: Fallback - use current working directory but warn
             fallback_path = Path.cwd().resolve()
             logger.warning(f"Using fallback path: {fallback_path} (this might be the server directory)")
             return fallback_path
@@ -353,13 +360,13 @@ class MCPHandler(BaseHTTPRequestHandler):
         return [
             {
                 "name": "detect_project_type",
-                "description": "Automatically detect the type of project with enhanced accuracy. Supports 25+ project types including React, Next.js, Angular, Vue, Python, .NET, Java, etc. Works with the user's current project directory.",
+                "description": "Automatically detect the type of project with enhanced accuracy. Supports 25+ project types including React, Next.js, Angular, Vue, Python, .NET, Java, etc. Use simple commands like 'Detect the project type' or 'What type of project is this?'",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "base_path": {
                             "type": "string",
-                            "description": "Base path to analyze (default: user's project directory)"
+                            "description": "Base path to analyze (optional - will use intelligent defaults)"
                         }
                     }
                 }
@@ -494,13 +501,13 @@ class MCPHandler(BaseHTTPRequestHandler):
             },
             {
                 "name": "document_project_comprehensive",
-                "description": "Complete project documentation workflow with enhanced detection and analysis. Automatically detects any project type and generates comprehensive documentation",
+                "description": "Complete project documentation workflow. Use simple commands like 'Document this project', 'Create comprehensive documentation', or 'Generate project documentation'. Automatically detects project type and creates full documentation.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "project_path": {
                             "type": "string",
-                            "description": "Project path to document (default: auto-detected)"
+                            "description": "Project path to document (optional - will use intelligent defaults)"
                         }
                     }
                 }

@@ -27,7 +27,31 @@
 
 ## 🚀 **Quick Start**
 
-### **Local Setup (Recommended)**
+### **Cloud Setup (Recommended)**
+
+#### **Step 1: Add to Cursor IDE**
+```json
+{
+  "mcpServers": {
+    "documenter": {
+      "url": "https://documenter-mcp.onrender.com/mcp/request"
+    }
+  }
+}
+```
+
+#### **Step 2: Restart Cursor IDE**
+After adding the configuration, restart Cursor IDE to load the MCP server.
+
+#### **Step 3: Use Natural Language Commands**
+- `"Detect the project type"`
+- `"Create comprehensive documentation for this project"`
+- `"Analyze this project structure"`
+- `"Document this project"`
+- `"Generate README for this project"`
+
+### **Local Setup (Alternative)**
+For advanced users who want local file access:
 
 #### **Step 1: Install**
 ```bash
@@ -42,26 +66,6 @@ pip install documenter-mcp
       "command": "python",
       "args": ["/path/to/local_server.py"],
       "env": {}
-    }
-  }
-}
-```
-
-#### **Step 3: Use Simple Commands**
-- `"Detect the project type"`
-- `"Create comprehensive documentation for this project"`
-- `"Analyze this project structure"`
-- `"Document this project"`
-
-### **Cloud Setup (Alternative)**
-Simply add this to your IDE's MCP configuration:
-
-#### **Cursor IDE:**
-```json
-{
-  "mcpServers": {
-    "documenter": {
-      "url": "https://documenter-mcp.onrender.com/mcp/request"
     }
   }
 }
@@ -173,19 +177,20 @@ Documenter/
 
 ## 🎉 **Benefits**
 
-### **Local Version (Recommended)**
-✅ **Natural Language**: Simple commands like "Document this project" work  
-✅ **Privacy**: Files stay on your machine  
-✅ **Performance**: Fast local file access  
-✅ **Offline**: Works without internet  
-✅ **No Path Specification**: Automatic project detection  
-
-### **Cloud Version**
-✅ **No Local Setup**: Just add the URL to your IDE  
+### **Cloud Version (Recommended)**
+✅ **No Installation**: Just add the URL to your IDE  
 ✅ **Always Available**: 24/7 service on Render  
 ✅ **Cross-Platform**: Works on any device with internet  
 ✅ **Professional**: Similar to Context7 and other MCP services  
 ✅ **Lightweight**: Fast and reliable (0.54s response time)  
+✅ **Natural Language**: Simple commands like "Document this project" work  
+
+### **Local Version (Alternative)**
+✅ **Privacy**: Files stay on your machine  
+✅ **Performance**: Fast local file access  
+✅ **Offline**: Works without internet  
+✅ **No Path Specification**: Automatic project detection  
+✅ **Full Control**: Complete control over the environment  
 
 ## 📄 **License**
 
