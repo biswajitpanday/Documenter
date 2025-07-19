@@ -99,6 +99,49 @@ PROJECT_CONFIGS = {
 class MCPHandler(BaseHTTPRequestHandler):
     """MCP Protocol HTTP Handler"""
     
+    def _get_user_project_path(self, arguments: Dict) -> Path:
+        """Get the user's project path from MCP context or arguments"""
+        try:
+            # Method 1: Check if base_path is provided in arguments
+            if 'base_path' in arguments and arguments['base_path']:
+                provided_path = Path(arguments['base_path'])
+                if provided_path.is_absolute():
+                    return provided_path
+                else:
+                    # If relative path provided, we need to determine the base
+                    # For now, we'll use a fallback approach
+                    pass
+            
+            # Method 2: Try to detect from environment variables
+            env_vars = [
+                'CURSOR_CWD', 'VSCODE_CWD', 'WINDSURF_CWD', 'CLAUDE_CWD',
+                'PWD', 'CD', 'INIT_CWD', 'PROJECT_ROOT', 'WORKSPACE_FOLDER'
+            ]
+            
+            for env_var in env_vars:
+                env_path = os.environ.get(env_var, '')
+                if env_path and Path(env_path).exists():
+                    test_path = Path(env_path).resolve()
+                    # Don't use the MCP server's own directory
+                    path_str = str(test_path).lower()
+                    if not any(pattern in path_str for pattern in ['documenter', 'mcps', 'render', 'opt/render']):
+                        return test_path
+            
+            # Method 3: Try to detect from request headers (if available)
+            # Some IDEs might send project path in headers
+            project_header = self.headers.get('X-Project-Path') or self.headers.get('X-Workspace-Path')
+            if project_header and Path(project_header).exists():
+                return Path(project_header).resolve()
+            
+            # Method 4: Fallback - use current working directory but warn
+            fallback_path = Path.cwd().resolve()
+            logger.warning(f"Using fallback path: {fallback_path} (this might be the server directory)")
+            return fallback_path
+            
+        except Exception as e:
+            logger.error(f"Error detecting user project path: {e}")
+            return Path.cwd().resolve()
+    
     def _send_response(self, status_code: int, data: dict):
         """Send JSON response with proper headers"""
         try:
@@ -254,6 +297,14 @@ class MCPHandler(BaseHTTPRequestHandler):
                         self._send_response(400, {"error": "Missing tool name"})
                         return
                     
+                    # Get user's project path and add it to context
+                    user_project_path = self._get_user_project_path(arguments)
+                    logger.info(f"User project path detected: {user_project_path}")
+                    
+                    # Add project context to arguments if not already present
+                    if 'base_path' not in arguments or not arguments['base_path']:
+                        arguments['base_path'] = str(user_project_path)
+                    
                     result = self._execute_tool(tool_name, arguments)
                     response = {
                         "jsonrpc": "2.0",
@@ -302,26 +353,26 @@ class MCPHandler(BaseHTTPRequestHandler):
         return [
             {
                 "name": "detect_project_type",
-                "description": "Automatically detect the type of project with enhanced accuracy. Supports 25+ project types including React, Next.js, Angular, Vue, Python, .NET, Java, etc.",
+                "description": "Automatically detect the type of project with enhanced accuracy. Supports 25+ project types including React, Next.js, Angular, Vue, Python, .NET, Java, etc. Works with the user's current project directory.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "base_path": {
                             "type": "string",
-                            "description": "Base path to analyze (default: current directory)"
+                            "description": "Base path to analyze (default: user's project directory)"
                         }
                     }
                 }
             },
             {
                 "name": "read_file",
-                "description": "Read the contents of a file from the project directory",
+                "description": "Read the contents of a file from the user's project directory",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "file_path": {
                             "type": "string",
-                            "description": "Path to the file to read"
+                            "description": "Path to the file to read (relative to user's project directory)"
                         }
                     },
                     "required": ["file_path"]
@@ -543,7 +594,7 @@ class MCPHandler(BaseHTTPRequestHandler):
             detected_types = []
             
             if not base_path.exists():
-                return f"❌ Path does not exist: {base_path}"
+                return f"❌ Path does not exist: {base_path}\n💡 Please provide the correct path to your project directory.\n📝 Example: Use 'Analyze the project at /path/to/your/project' or specify the base_path argument."
             
             for project_type, config in PROJECT_CONFIGS.items():
                 score = 0
@@ -601,8 +652,15 @@ class MCPHandler(BaseHTTPRequestHandler):
             # Sort by score
             detected_types.sort(key=lambda x: x['score'], reverse=True)
             
+            # Check if we're analyzing the server's own directory
+            path_str = str(base_path).lower()
+            if any(pattern in path_str for pattern in ['documenter', 'mcps', 'render', 'opt/render']):
+                warning = f"\n⚠️  WARNING: You appear to be analyzing the MCP server's own directory ({base_path}).\n💡 To analyze your project, please specify the correct path to your project directory.\n📝 Example: 'Analyze the project at /path/to/your/nextjs-project'"
+            else:
+                warning = ""
+            
             if not detected_types:
-                return f"Detected project type: GENERIC\nPath analyzed: {base_path}\nNo specific framework detected"
+                return f"Detected project type: GENERIC\nPath analyzed: {base_path}\nNo specific framework detected{warning}"
             
             primary_type = detected_types[0]
             result = []
@@ -615,6 +673,8 @@ class MCPHandler(BaseHTTPRequestHandler):
             
             if primary_type['directories']:
                 result.append(f"Relevant directories: {', '.join(primary_type['directories'])}")
+            
+            result.append(warning)  # Add warning if analyzing server directory
             
             return '\n'.join(result)
         except Exception as e:

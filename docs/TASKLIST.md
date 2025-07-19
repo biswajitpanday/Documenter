@@ -158,6 +158,19 @@
   - [x] Update code comments
   - [x] Clean up inline documentation
 
+### **Critical Bug Fixes** (Priority: CRITICAL)
+- [ ] **Project Path Detection**
+  - [ ] Fix base_path to use user's project directory, not server directory
+  - [ ] Implement proper working directory detection from MCP context
+  - [ ] Add project context awareness in tool execution
+  - [ ] Fix project type detection accuracy
+  - [ ] Test with Next.js, React, and other project types
+- [ ] **Tool Execution Context**
+  - [ ] Ensure tools run in user's project context
+  - [ ] Fix file path resolution for user projects
+  - [ ] Add proper error handling for missing projects
+  - [ ] Improve project boundary detection
+
 ### **Performance Optimization**
 - [ ] Add response caching
 - [ ] Add request queuing
@@ -339,6 +352,15 @@
 1. [x] **Day 1-2**: Project analysis and cleanup (Phase 1 completed)
 2. [ ] **Day 3-4**: Code optimization and refactoring
 3. [ ] **Day 5-7**: Documentation and testing improvements
+
+### **Week 4: Critical Bug Fixes**
+1. [ ] **Day 1-2**: Fix project path detection (CRITICAL)
+   - [ ] Fix base_path detection to use user's project directory
+   - [ ] Implement proper working directory detection
+   - [ ] Add project context awareness
+   - [ ] Test with different project types
+2. [ ] **Day 3-4**: Enhance project type detection accuracy
+3. [ ] **Day 5-7**: Improve tool execution context
 
 ### **Success Criteria**
 - [x] Server running on free platform
