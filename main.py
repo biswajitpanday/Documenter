@@ -207,7 +207,7 @@ PROJECT_CONFIGS = {
     }
 }
 
-def _get_enhanced_project_detection() -> Tuple[str, Dict]:
+def _get_enhanced_project_detection() -> Tuple[str, str]:
     """Enhanced project detection using multiple strategies"""
     try:
         # Try to get the actual working directory from various sources
@@ -327,11 +327,11 @@ def detect_project_type(base_path: str = ".") -> str:
         else:
             detection_method = "specified path"
         
-        base_path = Path(base_path).resolve()
+        base_path_obj = Path(base_path).resolve()
         detected_types = []
         
-        if not base_path.exists():
-            return f"❌ Path does not exist: {base_path}"
+        if not base_path_obj.exists():
+            return f"❌ Path does not exist: {base_path_obj}"
         
         for project_type, config in PROJECT_CONFIGS.items():
             if project_type == "generic":
@@ -343,17 +343,17 @@ def detect_project_type(base_path: str = ".") -> str:
             # Check for indicator files with enhanced matching
             for indicator in config["indicators"]:
                 if "*" in indicator:  # Handle wildcards
-                    matches = list(base_path.glob(indicator))
+                    matches = list(base_path_obj.glob(indicator))
                     if matches:
                         found_indicators.append(f"{indicator} ({len(matches)} files)")
                         score += 2
-                elif (base_path / indicator).exists():
+                elif (base_path_obj / indicator).exists():
                     found_indicators.append(indicator)
                     score += 2
             
             # Check file contents for specific keywords with enhanced logic
             for file_to_check, content_keys in config["check_content"].items():
-                file_path = base_path / file_to_check
+                file_path = base_path_obj / file_to_check
                 if file_path.exists() and file_path.is_file():
                     try:
                         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -374,7 +374,7 @@ def detect_project_type(base_path: str = ".") -> str:
             dir_score = 0
             found_dirs = []
             for important_dir in config["important_dirs"]:
-                if (base_path / important_dir).exists():
+                if (base_path_obj / important_dir).exists():
                     found_dirs.append(important_dir)
                     dir_score += 1
             
@@ -406,7 +406,7 @@ def detect_project_type(base_path: str = ".") -> str:
         
         result.append(f"Detected project type: {primary_type['type'].upper()}")
         result.append(f"Confidence Score: {primary_type['score']} ({primary_type['confidence']})")
-        result.append(f"Path analyzed: {base_path}")
+        result.append(f"Path analyzed: {base_path_obj}")
         result.append(f"Detection method: {detection_method}")
         
         if primary_type['indicators']:

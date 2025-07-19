@@ -1,0 +1,5 @@
+# Core dependencies for Documenter MCP Server
+# Minimal requirements for deployment
+
+# For testing (optional)
+requests>=2.31.0 

@@ -66,3 +66,4 @@ temp/
 
 # UV/Poetry
 .uv/
+.vercel
