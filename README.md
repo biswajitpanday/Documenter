@@ -1,6 +1,6 @@
 # Documenter MCP Server
 
-🚀 **Intelligent documentation generator for any project type** - Automatically detects project structure, analyzes dependencies, and generates comprehensive documentation.
+🚀 **Intelligent documentation generator for any project type** - Automatically detects project structure, analyzes dependencies, and generates comprehensive documentation. **Now with local file access for seamless integration!**
 
 ## ✨ **Features**
 
@@ -9,16 +9,51 @@
 - **📊 Comprehensive Analysis**: Project structure, dependencies, code metrics, and more
 - **📝 Documentation Generation**: Automatic README generation and component documentation
 - **🔧 MCP Protocol**: Full Model Context Protocol support for AI assistants
+- **🏠 Local File Access**: Runs on your machine for direct project access
+- **💬 Natural Language**: Simple commands like "Document this project" work
 
-## 🌐 **Live Service**
+## 🌐 **Deployment Options**
 
+### **Local Version (Recommended)**
+- **Privacy**: Files stay on your machine
+- **Performance**: Fast local file access
+- **Offline**: Works without internet
+- **Setup**: Simple pip install
+
+### **Cloud Version**
 **URL**: `https://documenter-mcp.onrender.com`
 
 **Status**: ✅ Running and fully functional
 
 ## 🚀 **Quick Start**
 
-### **Remote Usage (Recommended)**
+### **Local Setup (Recommended)**
+
+#### **Step 1: Install**
+```bash
+pip install documenter-mcp
+```
+
+#### **Step 2: Configure Cursor IDE**
+```json
+{
+  "mcpServers": {
+    "documenter": {
+      "command": "python",
+      "args": ["/path/to/local_server.py"],
+      "env": {}
+    }
+  }
+}
+```
+
+#### **Step 3: Use Simple Commands**
+- `"Detect the project type"`
+- `"Create comprehensive documentation for this project"`
+- `"Analyze this project structure"`
+- `"Document this project"`
+
+### **Cloud Setup (Alternative)**
 Simply add this to your IDE's MCP configuration:
 
 #### **Cursor IDE:**
@@ -26,18 +61,7 @@ Simply add this to your IDE's MCP configuration:
 {
   "mcpServers": {
     "documenter": {
-      "url": "https://documenter-mcp.onrender.com"
-    }
-  }
-}
-```
-
-#### **VS Code:**
-```json
-{
-  "mcp.servers": {
-    "documenter": {
-      "url": "https://documenter-mcp.onrender.com"
+      "url": "https://documenter-mcp.onrender.com/mcp/request"
     }
   }
 }
@@ -49,7 +73,10 @@ Simply add this to your IDE's MCP configuration:
 git clone <repository-url>
 cd Documenter
 
-# Run the server locally
+# Run the local server
+python local_server.py
+
+# Or run the cloud server
 python server.py
 ```
 
@@ -146,6 +173,14 @@ Documenter/
 
 ## 🎉 **Benefits**
 
+### **Local Version (Recommended)**
+✅ **Natural Language**: Simple commands like "Document this project" work  
+✅ **Privacy**: Files stay on your machine  
+✅ **Performance**: Fast local file access  
+✅ **Offline**: Works without internet  
+✅ **No Path Specification**: Automatic project detection  
+
+### **Cloud Version**
 ✅ **No Local Setup**: Just add the URL to your IDE  
 ✅ **Always Available**: 24/7 service on Render  
 ✅ **Cross-Platform**: Works on any device with internet  

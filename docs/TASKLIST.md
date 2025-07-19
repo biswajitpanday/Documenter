@@ -158,18 +158,23 @@
   - [x] Update code comments
   - [x] Clean up inline documentation
 
-### **Critical Bug Fixes** (Priority: CRITICAL)
-- [ ] **Project Path Detection**
-  - [ ] Fix base_path to use user's project directory, not server directory
-  - [ ] Implement proper working directory detection from MCP context
-  - [ ] Add project context awareness in tool execution
-  - [ ] Fix project type detection accuracy
-  - [ ] Test with Next.js, React, and other project types
-- [ ] **Tool Execution Context**
-  - [ ] Ensure tools run in user's project context
-  - [ ] Fix file path resolution for user projects
-  - [ ] Add proper error handling for missing projects
-  - [ ] Improve project boundary detection
+### **Local MCP Server Implementation** (Priority: CRITICAL)
+- [ ] **Local Server Development**
+  - [ ] Create local MCP server using FastMCP
+  - [ ] Extract and port tools from current server.py
+  - [ ] Implement local file system access
+  - [ ] Add proper error handling for local files
+  - [ ] Test with local projects (Next.js, React, Python, etc.)
+- [ ] **Cursor IDE Integration**
+  - [ ] Update Cursor configuration for local command
+  - [ ] Test local integration with Cursor IDE
+  - [ ] Create installation guide for local setup
+  - [ ] Ensure simple prompts work ("Document this project")
+- [ ] **Distribution & Migration**
+  - [ ] Create pip package for easy installation
+  - [ ] Create Docker image for containerized deployment
+  - [ ] Update all documentation for local usage
+  - [ ] Migrate users from cloud version to local version
 
 ### **Performance Optimization**
 - [ ] Add response caching
@@ -353,14 +358,22 @@
 2. [ ] **Day 3-4**: Code optimization and refactoring
 3. [ ] **Day 5-7**: Documentation and testing improvements
 
-### **Week 4: Critical Bug Fixes**
-1. [ ] **Day 1-2**: Fix project path detection (CRITICAL)
-   - [ ] Fix base_path detection to use user's project directory
-   - [ ] Implement proper working directory detection
-   - [ ] Add project context awareness
+### **Week 4: Local MCP Server Implementation (CRITICAL)**
+1. [ ] **Day 1-2**: Create local MCP server
+   - [ ] Extract tools from current server.py
+   - [ ] Create local MCP server using FastMCP
+   - [ ] Implement local file system access
+   - [ ] Test with local projects
+2. [ ] **Day 3-4**: Cursor IDE integration
+   - [ ] Update Cursor configuration for local server
+   - [ ] Test local integration
+   - [ ] Create installation guide
    - [ ] Test with different project types
-2. [ ] **Day 3-4**: Enhance project type detection accuracy
-3. [ ] **Day 5-7**: Improve tool execution context
+3. [ ] **Day 5-7**: Distribution and migration
+   - [ ] Create pip package
+   - [ ] Update documentation
+   - [ ] Migrate users from cloud version
+   - [ ] Deprecate cloud version
 
 ### **Success Criteria**
 - [x] Server running on free platform
