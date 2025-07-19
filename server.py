@@ -223,7 +223,9 @@ class MCPHandler(BaseHTTPRequestHandler):
                         "result": {
                             "protocolVersion": "2024-11-05",
                             "capabilities": {
-                                "tools": {}
+                                "tools": {
+                                    "listChanged": False
+                                }
                             },
                             "serverInfo": {
                                 "name": "Documenter",
