@@ -39,7 +39,7 @@
 ### **Step 5: Environment Variables**
 Add these environment variables:
 - **Key**: `PORT`, **Value**: `8080`
-- **Key**: `PYTHON_VERSION`, **Value**: `3.11`
+- **Key**: `PYTHON_VERSION`, **Value**: `3.11.9`
 
 ### **Step 6: Deploy**
 1. Click **"Create Web Service"**
