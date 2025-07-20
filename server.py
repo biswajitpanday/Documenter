@@ -387,16 +387,17 @@ class MCPHandler(BaseHTTPRequestHandler):
             if path == "/":
                 response = {
                     "name": "Documenter MCP Server",
-                    "version": "2.0.0",
+                    "version": "3.0.0-hybrid",
                     "status": "running",
-                    "description": "Intelligent documentation generator for any project type",
+                    "description": "Intelligent documentation generator for any project type - HYBRID ARCHITECTURE",
                     "platform": "Render",
                     "url": "https://documenter-mcp.onrender.com",
                     "endpoints": {
                         "health": "/",
                         "tools": "/tools",
                         "mcp": "/mcp/request"
-                    }
+                    },
+                    "features": ["hybrid-mode", "auto-companion-download", "local-file-analysis"]
                 }
                 self._send_response(200, response)
                 
