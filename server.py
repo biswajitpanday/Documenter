@@ -10,6 +10,9 @@ import re
 import sys
 import platform
 import time
+import uuid
+import tempfile
+import shutil
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -99,55 +102,230 @@ PROJECT_CONFIGS = {
 class MCPHandler(BaseHTTPRequestHandler):
     """MCP Protocol HTTP Handler"""
     
-    def _get_user_project_path(self, arguments: Dict) -> Path:
-        """Get the user's project path from MCP context or arguments"""
+    # Class-level storage for uploaded projects
+    projects: Dict[str, Dict] = {}
+    
+    def _get_user_project_path(self, arguments: Dict, request_data: Dict = None) -> Path:
+        """Get the user's project path from MCP context or arguments with enhanced detection"""
         try:
+            logger.info("🔍 Attempting to detect user's project path...")
+            
             # Method 1: Check if base_path is provided in arguments
             if 'base_path' in arguments and arguments['base_path']:
-                provided_path = Path(arguments['base_path'])
-                if provided_path.is_absolute():
-                    return provided_path
-                else:
-                    # If relative path provided, we need to determine the base
-                    # For now, we'll use a fallback approach
-                    pass
+                provided_path = arguments['base_path']
+                logger.info(f"📁 Base path provided in arguments: {provided_path}")
+                
+                # Handle different path formats
+                if provided_path and provided_path != ".":
+                    # Check if it's an absolute path
+                    path_obj = Path(provided_path)
+                    if path_obj.is_absolute() and path_obj.exists():
+                        logger.info(f"✅ Using absolute path: {path_obj}")
+                        return path_obj.resolve()
+                    
+                    # Try as relative path from common base directories
+                    possible_bases = [
+                        Path.cwd(),
+                        Path("/workspace"),  # Common in cloud environments
+                        Path("/app"),        # Common in Docker
+                        Path("/opt/render/project/src"),  # Render environment
+                    ]
+                    
+                    for base in possible_bases:
+                        full_path = base / provided_path
+                        if full_path.exists():
+                            logger.info(f"✅ Found relative path: {full_path}")
+                            return full_path.resolve()
             
-            # Method 2: Try to detect from MCP context in request
-            # Check if there's any context information in the request
-            if hasattr(self, 'request_context') and self.request_context:
-                context_path = self.request_context.get('project_path') or self.request_context.get('workspace_path')
-                if context_path and Path(context_path).exists():
-                    return Path(context_path).resolve()
+            # Method 2: Extract from natural language in arguments
+            context_path = self._extract_path_from_natural_language(arguments, request_data)
+            if context_path and context_path.exists():
+                logger.info(f"✅ Extracted from natural language: {context_path}")
+                return context_path.resolve()
             
-            # Method 3: Try to detect from request headers (if available)
-            # Some IDEs might send project path in headers
-            project_header = self.headers.get('X-Project-Path') or self.headers.get('X-Workspace-Path')
-            if project_header and Path(project_header).exists():
-                return Path(project_header).resolve()
+            # Method 3: Check MCP request context and headers
+            mcp_context_path = self._extract_path_from_mcp_context(request_data)
+            if mcp_context_path and mcp_context_path.exists():
+                logger.info(f"✅ Found in MCP context: {mcp_context_path}")
+                return mcp_context_path.resolve()
             
-            # Method 4: Try to detect from environment variables
-            env_vars = [
-                'CURSOR_CWD', 'VSCODE_CWD', 'WINDSURF_CWD', 'CLAUDE_CWD',
-                'PWD', 'CD', 'INIT_CWD', 'PROJECT_ROOT', 'WORKSPACE_FOLDER'
-            ]
+            # Method 4: Try to detect from request headers (if available)
+            header_path = self._extract_path_from_headers()
+            if header_path and header_path.exists():
+                logger.info(f"✅ Found in headers: {header_path}")
+                return header_path.resolve()
             
-            for env_var in env_vars:
-                env_path = os.environ.get(env_var, '')
-                if env_path and Path(env_path).exists():
-                    test_path = Path(env_path).resolve()
-                    # Don't use the MCP server's own directory
-                    path_str = str(test_path).lower()
-                    if not any(pattern in path_str for pattern in ['documenter', 'mcps', 'render', 'opt/render']):
-                        return test_path
-            
-            # Method 5: Fallback - use current working directory but warn
+            # Method 5: Intelligent fallback - use server's current directory
+            # This is where the cloud server limitation becomes apparent
             fallback_path = Path.cwd().resolve()
-            logger.warning(f"Using fallback path: {fallback_path} (this might be the server directory)")
+            logger.warning(f"⚠️ Using fallback path (server directory): {fallback_path}")
+            logger.warning("💡 TIP: For better project detection, try specifying the project path in your prompt")
+            
             return fallback_path
             
         except Exception as e:
-            logger.error(f"Error detecting user project path: {e}")
+            logger.error(f"❌ Error detecting project path: {e}")
             return Path.cwd().resolve()
+    
+    def _extract_path_from_natural_language(self, arguments: Dict, request_data: Dict = None) -> Optional[Path]:
+        """Extract project path from natural language in user prompts"""
+        try:
+            # Get all text from the request to analyze
+            text_sources = []
+            
+            # Check arguments for text content
+            for key, value in arguments.items():
+                if isinstance(value, str):
+                    text_sources.append(value)
+            
+            # Check if there's prompt text in request_data
+            if request_data:
+                # Look for common fields that might contain the user's prompt
+                prompt_fields = ['prompt', 'message', 'text', 'query', 'input', 'description']
+                for field in prompt_fields:
+                    if field in request_data and isinstance(request_data[field], str):
+                        text_sources.append(request_data[field])
+                
+                # Check nested structures
+                if 'params' in request_data and isinstance(request_data['params'], dict):
+                    for field in prompt_fields:
+                        if field in request_data['params']:
+                            text_sources.append(str(request_data['params'][field]))
+            
+            # Combine all text sources
+            combined_text = " ".join(text_sources).lower()
+            
+            if not combined_text:
+                return None
+            
+            logger.info(f"🔍 Analyzing text for path clues: {combined_text[:100]}...")
+            
+            # Path extraction patterns
+            import re
+            
+            # Pattern 1: Explicit paths (Windows and Unix)
+            path_patterns = [
+                r'[A-Z]:\\[^\\/:*?"<>|\r\n]+(?:\\[^\\/:*?"<>|\r\n]+)*',  # Windows absolute paths
+                r'/[^/:\*\?"<>\|\r\n]+(?:/[^/:\*\?"<>\|\r\n]+)*',        # Unix absolute paths
+                r'\\\\[^\\/:*?"<>|\r\n]+(?:\\[^\\/:*?"<>|\r\n]+)*',      # UNC paths
+            ]
+            
+            for pattern in path_patterns:
+                matches = re.findall(pattern, combined_text, re.IGNORECASE)
+                for match in matches:
+                    potential_path = Path(match)
+                    if potential_path.exists() and potential_path.is_dir():
+                        logger.info(f"🎯 Found explicit path in text: {potential_path}")
+                        return potential_path
+            
+            # Pattern 2: Project name hints
+            project_keywords = [
+                r'project\s+(?:at|in|located|from|called|named)\s+([^\s]+)',
+                r'(?:analyze|document|check)\s+([A-Za-z0-9\-_]+)\s+project',
+                r'current\s+project\s+(?:at|in)\s+([^\s]+)',
+                r'working\s+on\s+([A-Za-z0-9\-_]+)',
+            ]
+            
+            for pattern in project_keywords:
+                matches = re.findall(pattern, combined_text, re.IGNORECASE)
+                for match in matches:
+                    # Try to find this project name in common locations
+                    common_locations = [
+                        Path.home() / "Projects",
+                        Path.home() / "Documents",
+                        Path.home() / "Code",
+                        Path("/workspace"),
+                        Path("/app"),
+                        Path("C:/Projects") if Path("C:/").exists() else None,
+                        Path("C:/D/RND") if Path("C:/D").exists() else None,
+                    ]
+                    
+                    for location in common_locations:
+                        if location and location.exists():
+                            potential_path = location / match
+                            if potential_path.exists() and potential_path.is_dir():
+                                logger.info(f"🎯 Found project by name: {potential_path}")
+                                return potential_path
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error extracting path from natural language: {e}")
+            return None
+    
+    def _extract_path_from_mcp_context(self, request_data: Dict = None) -> Optional[Path]:
+        """Extract project path from MCP request context/metadata"""
+        try:
+            if not request_data:
+                return None
+            
+            # Check for workspace/project information in MCP context
+            context_fields = [
+                'workspace', 'project', 'cwd', 'working_directory', 
+                'current_directory', 'root_path', 'base_path'
+            ]
+            
+            for field in context_fields:
+                if field in request_data:
+                    path_value = request_data[field]
+                    if isinstance(path_value, str) and path_value:
+                        potential_path = Path(path_value)
+                        if potential_path.exists():
+                            return potential_path
+            
+            # Check nested context in params
+            if 'params' in request_data and isinstance(request_data['params'], dict):
+                params = request_data['params']
+                for field in context_fields:
+                    if field in params:
+                        path_value = params[field]
+                        if isinstance(path_value, str) and path_value:
+                            potential_path = Path(path_value)
+                            if potential_path.exists():
+                                return potential_path
+            
+            # Check for IDE-specific context
+            ide_context_fields = [
+                'cursor_workspace', 'vscode_workspace', 'ide_workspace',
+                'project_root', 'workspace_root'
+            ]
+            
+            for field in ide_context_fields:
+                if field in request_data:
+                    path_value = request_data[field]
+                    if isinstance(path_value, str) and path_value:
+                        potential_path = Path(path_value)
+                        if potential_path.exists():
+                            return potential_path
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error extracting path from MCP context: {e}")
+            return None
+    
+    def _extract_path_from_headers(self) -> Optional[Path]:
+        """Extract project path from HTTP headers"""
+        try:
+            # Check common headers that IDEs might send
+            header_fields = [
+                'X-Project-Path', 'X-Workspace-Path', 'X-Current-Directory',
+                'X-Working-Directory', 'X-Root-Path', 'X-Base-Path',
+                'Cursor-Workspace', 'VSCode-Workspace', 'IDE-Workspace'
+            ]
+            
+            for header in header_fields:
+                header_value = self.headers.get(header)
+                if header_value:
+                    potential_path = Path(header_value)
+                    if potential_path.exists():
+                        return potential_path
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error extracting path from headers: {e}")
+            return None
     
     def _send_response(self, status_code: int, data: dict):
         """Send JSON response with proper headers"""
@@ -305,7 +483,7 @@ class MCPHandler(BaseHTTPRequestHandler):
                         return
                     
                     # Get user's project path and add it to context
-                    user_project_path = self._get_user_project_path(arguments)
+                    user_project_path = self._get_user_project_path(arguments, request_data)
                     logger.info(f"User project path detected: {user_project_path}")
                     
                     # Add project context to arguments if not already present
@@ -511,6 +689,32 @@ class MCPHandler(BaseHTTPRequestHandler):
                         }
                     }
                 }
+            },
+            {
+                "name": "upload_project_files",
+                "description": "Upload project files for analysis. Use this to upload your project files so the cloud server can analyze them. Example: 'Upload my project files for analysis'",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "files_data": {
+                            "type": "object",
+                            "description": "Object containing file paths as keys and file contents as values"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "analyze_uploaded_project",
+                "description": "Analyze a previously uploaded project. Use this after uploading files to get comprehensive documentation. Example: 'Analyze the uploaded project'",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {
+                            "type": "string",
+                            "description": "Project ID returned from upload_project_files"
+                        }
+                    }
+                }
             }
         ]
     
@@ -587,6 +791,16 @@ class MCPHandler(BaseHTTPRequestHandler):
                 if not isinstance(project_path, str):
                     return "❌ Invalid project_path parameter"
                 return self._document_project_comprehensive(project_path)
+            elif tool_name == "upload_project_files":
+                files_data = arguments.get("files_data", {})
+                if not isinstance(files_data, dict):
+                    return "❌ Invalid files_data parameter"
+                return self._upload_project_files(files_data)
+            elif tool_name == "analyze_uploaded_project":
+                project_id = arguments.get("project_id", "")
+                if not isinstance(project_id, str):
+                    return "❌ Invalid project_id parameter"
+                return self._analyze_uploaded_project(project_id)
             else:
                 return f"❌ Tool '{tool_name}' not found"
         except Exception as e:
@@ -1058,23 +1272,70 @@ class MCPHandler(BaseHTTPRequestHandler):
             return f"Error scanning for annotations: {e}"
     
     def _document_project_comprehensive(self, project_path: str) -> str:
-        """Complete comprehensive documentation workflow"""
+        """Complete comprehensive documentation workflow with enhanced context detection"""
         try:
+            # Enhanced project path detection
+            original_path = project_path
             if not project_path:
                 project_path = str(Path.cwd().resolve())
             
             base_path = Path(project_path).resolve()
             
+            # Check if we're analyzing the server's own directory (cloud limitation)
+            server_indicators = ['opt/render/project', 'documenter', 'mcp', 'server.py']
+            path_str = str(base_path).lower()
+            is_server_directory = any(indicator in path_str for indicator in server_indicators)
+            
             results = []
             results.append("# 🚀 Universal Project Documentation")
             results.append("=" * 70)
-            results.append(f"📁 Project Location: {base_path}")
-            results.append(f"🖥️  Platform: {platform.system()} {platform.release()}")
-            results.append(f"🐍 Python: {sys.version.split()[0]}")
+            
+            # Context detection feedback
+            if is_server_directory:
+                results.append("⚠️  **IMPORTANT: Cloud Server Limitation Detected**")
+                results.append("")
+                results.append("🔍 **Context Detection Results:**")
+                results.append(f"📁 **Analyzing**: {base_path}")
+                results.append("❌ **Issue**: This appears to be the MCP server's directory, not your project")
+                results.append("")
+                results.append("💡 **How to Fix This:**")
+                results.append("1. **Specify your project path explicitly**: Try prompts like:")
+                results.append("   - `\"Document the project at C:\\path\\to\\your\\project\"`")
+                results.append("   - `\"Analyze my React project in C:\\Users\\YourName\\Projects\\MyApp\"`")
+                results.append("2. **Use descriptive prompts**: Include your project name or location")
+                results.append("3. **Consider the local version**: For direct file access without path specification")
+                results.append("")
+                results.append("📋 **Example Commands:**")
+                results.append("```")
+                results.append("Document the Next.js project at C:\\D\\RND\\my-portfolio")
+                results.append("Analyze the React project in /Users/john/Projects/my-app")
+                results.append("Generate documentation for the Laravel project located at /var/www/html")
+                results.append("```")
+                results.append("")
+                results.append("🔄 **Continuing with current directory analysis for demonstration...**")
+                results.append("")
+            else:
+                results.append("✅ **Context Detection Successful**")
+                results.append(f"📁 **Project Location**: {base_path}")
+                if original_path:
+                    results.append(f"🎯 **Detection Method**: Path provided in request")
+                else:
+                    results.append(f"🎯 **Detection Method**: Automatic detection")
+                results.append("")
+            
+            results.append(f"🖥️  **Platform**: {platform.system()} {platform.release()}")
+            results.append(f"🐍 **Python**: {sys.version.split()[0]}")
             results.append("")
             
             if not base_path.exists():
-                return f"❌ Project path does not exist: {base_path}"
+                results.append(f"❌ **Error**: Project path does not exist: {base_path}")
+                results.append("")
+                results.append("💡 **Suggestions:**")
+                results.append("- Check if the path is correct")
+                results.append("- Make sure the directory exists")
+                results.append("- Try using an absolute path")
+                results.append("- For cloud version, specify the full project path in your prompt")
+                return '\n'.join(results)
             
             # Step 1: Project type detection
             results.append("## 🔍 Step 1: Project Type Detection")
@@ -1097,19 +1358,392 @@ class MCPHandler(BaseHTTPRequestHandler):
             results.append(metrics_result)
             results.append("")
             
-            # Step 4: README generation
-            results.append("## 📝 Step 4: README Generation")
+            # Step 4: Technical debt scanning
+            results.append("## 🐛 Step 4: Technical Debt Analysis")
+            results.append("-" * 50)
+            debt_result = self._scan_for_todos_and_fixmes(str(base_path))
+            results.append(debt_result)
+            results.append("")
+            
+            # Step 5: README generation
+            results.append("## 📝 Step 5: README Generation")
             results.append("-" * 50)
             readme_result = self._generate_project_readme(str(base_path))
             results.append(readme_result)
             results.append("")
             
-            results.append("🎉 **Universal project documentation completed successfully!**")
+            # Final recommendations
+            if is_server_directory:
+                results.append("## 🎯 Final Recommendations")
+                results.append("-" * 50)
+                results.append("This analysis was performed on the MCP server directory as a demonstration.")
+                results.append("For accurate project documentation:")
+                results.append("")
+                results.append("**Option 1: Cloud Version with Explicit Paths**")
+                results.append("- Use prompts like: `\"Document the project at C:\\path\\to\\your\\project\"`")
+                results.append("- Always specify the full project path")
+                results.append("- Works great for one-time documentation tasks")
+                results.append("")
+                results.append("**Option 2: Local Version (Recommended for Development)**")
+                results.append("- Download and run the local MCP server")
+                results.append("- Automatic project detection from your IDE workspace")
+                results.append("- Direct file system access, no path specification needed")
+                results.append("- Perfect for active development workflow")
+                results.append("")
+            else:
+                results.append("🎉 **Universal project documentation completed successfully!**")
+                results.append("")
+                results.append("📋 **Summary:**")
+                results.append("- Project type detected and analyzed")
+                results.append("- Complete structure mapping performed")
+                results.append("- Code metrics and technology distribution calculated")
+                results.append("- Technical debt and annotations identified")
+                results.append("- Comprehensive README generated")
             
             return '\n'.join(results)
             
         except Exception as e:
-            return f"❌ Critical error in comprehensive documentation: {e}"
+            return f"❌ Critical error in comprehensive documentation: {e}\n\n💡 Try specifying your project path explicitly in the prompt."
+
+    def _upload_project_files(self, files_data: Dict) -> str:
+        """Handle file uploads for project analysis"""
+        try:
+            if not files_data:
+                return "❌ No files provided for upload"
+            
+            project_id = str(uuid.uuid4())
+            uploaded_files = {}
+            
+            # Process uploaded files
+            for file_path, file_content in files_data.items():
+                if isinstance(file_content, str):
+                    uploaded_files[file_path] = file_content
+                else:
+                    return f"❌ Invalid file content for {file_path}"
+            
+            # Store project data
+            self.projects[project_id] = {
+                'files': uploaded_files,
+                'uploaded_at': time.time(),
+                'status': 'uploaded',
+                'file_count': len(uploaded_files)
+            }
+            
+            # Clean up old projects (keep only last 10)
+            if len(self.projects) > 10:
+                oldest_projects = sorted(self.projects.items(), key=lambda x: x[1]['uploaded_at'])[:-10]
+                for old_id, _ in oldest_projects:
+                    del self.projects[old_id]
+            
+            return f"✅ Project uploaded successfully!\n📁 Project ID: {project_id}\n📄 Files uploaded: {len(uploaded_files)}\n💡 Use 'analyze_uploaded_project' with this project ID to generate documentation."
+            
+        except Exception as e:
+            logger.error(f"Upload failed: {e}")
+            return f"❌ Upload failed: {e}"
+
+    def _analyze_uploaded_project(self, project_id: str) -> str:
+        """Analyze project from uploaded files"""
+        try:
+            if project_id not in self.projects:
+                return f"❌ Project {project_id} not found. Please upload your project files first using 'upload_project_files'."
+            
+            project_data = self.projects[project_id]
+            files = project_data['files']
+            
+            if not files:
+                return "❌ No files found in uploaded project"
+            
+            results = []
+            results.append("# 🚀 Uploaded Project Analysis")
+            results.append("=" * 50)
+            results.append(f"📁 Project ID: {project_id}")
+            results.append(f"📄 Files uploaded: {len(files)}")
+            results.append(f"⏰ Uploaded: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(project_data['uploaded_at']))}")
+            results.append("")
+            
+            # Analyze project type from uploaded files
+            project_type = self._detect_project_type_from_files(files)
+            results.append("## 🔍 Project Type Detection")
+            results.append("-" * 30)
+            results.append(project_type)
+            results.append("")
+            
+            # Analyze project structure
+            structure_analysis = self._analyze_project_structure_from_files(files)
+            results.append("## 📊 Project Structure Analysis")
+            results.append("-" * 30)
+            results.append(structure_analysis)
+            results.append("")
+            
+            # Analyze key configuration files
+            config_analysis = self._analyze_config_files_from_uploaded(files)
+            if config_analysis:
+                results.append("## ⚙️ Configuration Analysis")
+                results.append("-" * 30)
+                results.append(config_analysis)
+                results.append("")
+            
+            # Generate README
+            readme_content = self._generate_readme_from_files(files, project_type)
+            results.append("## 📝 Generated README")
+            results.append("-" * 30)
+            results.append("```markdown")
+            results.append(readme_content)
+            results.append("```")
+            results.append("")
+            
+            results.append("## ✅ Analysis Complete")
+            results.append("-" * 30)
+            results.append("🎉 Your project has been successfully analyzed!")
+            results.append("📄 A comprehensive README has been generated above.")
+            results.append("💡 You can copy the README content to create a README.md file in your project.")
+            
+            return '\n'.join(results)
+            
+        except Exception as e:
+            logger.error(f"Analysis failed: {e}")
+            return f"❌ Analysis failed: {e}"
+
+    def _detect_project_type_from_files(self, files: Dict[str, str]) -> str:
+        """Detect project type from uploaded files"""
+        try:
+            detected_types = []
+            
+            for project_type, config in PROJECT_CONFIGS.items():
+                score = 0
+                found_indicators = []
+                
+                # Check for indicator files
+                for indicator in config["indicators"]:
+                    for file_path in files.keys():
+                        if indicator in file_path or file_path.endswith(indicator):
+                            found_indicators.append(f"{indicator} ({file_path})")
+                            score += 2
+                
+                # Check file contents
+                for file_to_check, content_keys in config["check_content"].items():
+                    for file_path, file_content in files.items():
+                        if file_to_check in file_path or file_path.endswith(file_to_check):
+                            try:
+                                content = file_content.lower()
+                                if isinstance(content_keys, list):
+                                    matched_keys = [key for key in content_keys if key.lower() in content]
+                                    if matched_keys:
+                                        score += len(matched_keys) * 2
+                                        found_indicators.append(f"{file_path} (contains {', '.join(matched_keys)})")
+                            except Exception:
+                                pass
+                
+                if score > 0:
+                    detected_types.append({
+                        'type': project_type,
+                        'score': score,
+                        'indicators': found_indicators
+                    })
+            
+            # Sort by score
+            detected_types.sort(key=lambda x: x['score'], reverse=True)
+            
+            if not detected_types:
+                return "Detected project type: GENERIC\nNo specific framework detected"
+            
+            primary_type = detected_types[0]
+            result = []
+            result.append(f"Detected project type: {primary_type['type'].upper()}")
+            result.append(f"Confidence Score: {primary_type['score']}")
+            
+            if primary_type['indicators']:
+                result.append(f"Indicators found: {', '.join(primary_type['indicators'])}")
+            
+            return '\n'.join(result)
+            
+        except Exception as e:
+            return f"Error detecting project type: {e}"
+
+    def _analyze_project_structure_from_files(self, files: Dict[str, str]) -> str:
+        """Analyze project structure from uploaded files"""
+        try:
+            structure = []
+            structure.append("## 📁 File Structure")
+            structure.append("```")
+            
+            # Group files by directory
+            dirs = {}
+            for file_path in files.keys():
+                path_parts = file_path.split('/')
+                if len(path_parts) > 1:
+                    dir_name = path_parts[0]
+                    if dir_name not in dirs:
+                        dirs[dir_name] = []
+                    dirs[dir_name].append('/'.join(path_parts[1:]))
+                else:
+                    if 'root' not in dirs:
+                        dirs['root'] = []
+                    dirs['root'].append(file_path)
+            
+            # Display structure
+            for dir_name, files_in_dir in sorted(dirs.items()):
+                if dir_name == 'root':
+                    structure.append("📄 Root files:")
+                else:
+                    structure.append(f"📁 {dir_name}/")
+                
+                for file_name in sorted(files_in_dir):
+                    structure.append(f"  └── {file_name}")
+                structure.append("")
+            
+            structure.append("```")
+            structure.append(f"**Total files analyzed:** {len(files)}")
+            
+            return '\n'.join(structure)
+            
+        except Exception as e:
+            return f"Error analyzing project structure: {e}"
+
+    def _analyze_config_files_from_uploaded(self, files: Dict[str, str]) -> str:
+        """Analyze configuration files from uploaded files"""
+        try:
+            config_analysis = []
+            
+            # Check for package.json
+            for file_path, content in files.items():
+                if 'package.json' in file_path:
+                    try:
+                        package_data = json.loads(content)
+                        config_analysis.append("### 📦 Package.json Analysis")
+                        config_analysis.append(f"**Name:** {package_data.get('name', 'Unknown')}")
+                        config_analysis.append(f"**Version:** {package_data.get('version', 'Unknown')}")
+                        config_analysis.append(f"**Description:** {package_data.get('description', 'No description')}")
+                        
+                        if 'scripts' in package_data:
+                            config_analysis.append("**Available Scripts:**")
+                            for script, command in package_data['scripts'].items():
+                                config_analysis.append(f"- `npm run {script}`: {command}")
+                        
+                        if 'dependencies' in package_data:
+                            deps = package_data['dependencies']
+                            config_analysis.append(f"**Dependencies:** {len(deps)} total")
+                            for dep, version in list(deps.items())[:10]:  # Show first 10
+                                config_analysis.append(f"- `{dep}`: {version}")
+                            if len(deps) > 10:
+                                config_analysis.append(f"- ... and {len(deps) - 10} more dependencies")
+                        
+                        config_analysis.append("")
+                    except Exception:
+                        config_analysis.append("❌ Error parsing package.json")
+                        config_analysis.append("")
+            
+            # Check for other config files
+            config_files = ['pyproject.toml', 'requirements.txt', 'pom.xml', 'Cargo.toml', 'go.mod']
+            for config_file in config_files:
+                for file_path, content in files.items():
+                    if config_file in file_path:
+                        config_analysis.append(f"### ⚙️ {config_file}")
+                        config_analysis.append(f"```")
+                        config_analysis.append(content[:500] + "..." if len(content) > 500 else content)
+                        config_analysis.append("```")
+                        config_analysis.append("")
+                        break
+            
+            return '\n'.join(config_analysis) if config_analysis else "No configuration files found"
+            
+        except Exception as e:
+            return f"Error analyzing configuration files: {e}"
+
+    def _generate_readme_from_files(self, files: Dict[str, str], project_type: str) -> str:
+        """Generate README from uploaded files"""
+        try:
+            # Extract project name from package.json or use a default
+            project_name = "My Project"
+            description = "A software project"
+            
+            for file_path, content in files.items():
+                if 'package.json' in file_path:
+                    try:
+                        package_data = json.loads(content)
+                        project_name = package_data.get('name', project_name)
+                        description = package_data.get('description', description)
+                        break
+                    except Exception:
+                        pass
+            
+            readme = []
+            readme.append(f"# {project_name}")
+            readme.append("")
+            readme.append(description)
+            readme.append("")
+            
+            # Project type info
+            readme.append("## 🚀 Project Information")
+            readme.append(project_type.replace("Detected project type: ", "**Project Type:** "))
+            readme.append("")
+            
+            # Installation and setup
+            readme.append("## 📦 Installation")
+            readme.append("")
+            readme.append("```bash")
+            readme.append("# Clone the repository")
+            readme.append(f"git clone <repository-url>")
+            readme.append(f"cd {project_name}")
+            readme.append("")
+            
+            # Add installation commands based on project type
+            if 'NEXTJS' in project_type.upper() or 'REACT' in project_type.upper():
+                readme.append("# Install dependencies")
+                readme.append("npm install")
+                readme.append("")
+                readme.append("# Start development server")
+                readme.append("npm run dev")
+            elif 'PYTHON' in project_type.upper():
+                readme.append("# Install dependencies")
+                readme.append("pip install -r requirements.txt")
+                readme.append("")
+                readme.append("# Run the application")
+                readme.append("python main.py")
+            else:
+                readme.append("# Install dependencies")
+                readme.append("# (Add installation instructions for your project type)")
+            
+            readme.append("```")
+            readme.append("")
+            
+            # Project structure
+            readme.append("## 📁 Project Structure")
+            readme.append("")
+            readme.append("```")
+            
+            # Show key files and directories
+            key_files = []
+            for file_path in files.keys():
+                if any(keyword in file_path.lower() for keyword in ['readme', 'package.json', 'main.py', 'index.js', 'app.py']):
+                    key_files.append(file_path)
+            
+            for file_path in sorted(key_files):
+                readme.append(f"├── {file_path}")
+            
+            readme.append("```")
+            readme.append("")
+            
+            # Contributing section
+            readme.append("## 🤝 Contributing")
+            readme.append("")
+            readme.append("1. Fork the repository")
+            readme.append("2. Create your feature branch (`git checkout -b feature/amazing-feature`)")
+            readme.append("3. Commit your changes (`git commit -m 'Add some amazing feature'`)")
+            readme.append("4. Push to the branch (`git push origin feature/amazing-feature`)")
+            readme.append("5. Open a Pull Request")
+            readme.append("")
+            
+            # License section
+            readme.append("## 📄 License")
+            readme.append("")
+            readme.append("This project is licensed under the MIT License - see the LICENSE file for details.")
+            readme.append("")
+            
+            return '\n'.join(readme)
+            
+        except Exception as e:
+            return f"Error generating README: {e}"
 
 if __name__ == "__main__":
     # Get port from environment or use default
