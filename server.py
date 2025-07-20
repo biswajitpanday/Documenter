@@ -232,7 +232,22 @@ class MCPHandler(BaseHTTPRequestHandler):
                         logger.info(f"🎯 Found explicit path in text: {potential_path}")
                         return potential_path
             
-            # Pattern 2: Project name hints
+            # Pattern 2: Check for "this project" or similar phrases that suggest user's project
+            user_project_phrases = [
+                r'this\s+project', r'my\s+project', r'current\s+project',
+                r'the\s+project', r'our\s+project', r'document\s+project',
+                r'analyze\s+project', r'project\s+comprehensive',
+                r'generate\s+documentation', r'document\s+this'
+            ]
+            
+            # If user is referring to "their" project, trigger hybrid mode
+            for phrase in user_project_phrases:
+                if re.search(phrase, combined_text, re.IGNORECASE):
+                    logger.info(f"🎯 User referring to their project: '{phrase}' - suggesting hybrid mode")
+                    # Return a special marker that indicates hybrid should be used
+                    return Path("__HYBRID_MODE_REQUESTED__")
+            
+            # Pattern 3: Project name hints with explicit paths
             project_keywords = [
                 r'project\s+(?:at|in|located|from|called|named)\s+([^\s]+)',
                 r'(?:analyze|document|check)\s+([A-Za-z0-9\-_]+)\s+project',
@@ -1303,10 +1318,21 @@ class MCPHandler(BaseHTTPRequestHandler):
     def _document_project_comprehensive(self, project_path: str) -> str:
         """Complete comprehensive documentation workflow with enhanced context detection"""
         try:
-            # Enhanced project path detection
+            # Enhanced project path detection with hybrid trigger
             original_path = project_path
+            user_wants_hybrid = False
+            
+            # Check if user is asking for their project (not server analysis)
             if not project_path:
+                # Auto-detect current directory
                 project_path = str(Path.cwd().resolve())
+                
+                # If this is a cloud server, user almost certainly wants their project, not server analysis
+                # When users say "document this project" to a cloud MCP server, they mean THEIR project
+                server_indicators = ['opt/render/project', 'documenter', 'mcp', 'render']
+                if any(indicator in project_path.lower() for indicator in server_indicators):
+                    user_wants_hybrid = True
+                    logger.info("🎯 Cloud server detected - user likely wants their project, not server files")
             
             base_path = Path(project_path).resolve()
             
@@ -1319,31 +1345,79 @@ class MCPHandler(BaseHTTPRequestHandler):
             results.append("# 🚀 Universal Project Documentation")
             results.append("=" * 70)
             
-            # Context detection feedback
-            if is_server_directory:
-                results.append("⚠️  **IMPORTANT: Cloud Server Limitation Detected**")
+            # HYBRID MODE AUTO-DETECTION: Trigger when cloud limitation detected or user wants their project
+            if (is_server_directory or user_wants_hybrid) and self.hybrid_mode:
+                results.append("🌟 **HYBRID MODE ACTIVATED**")
                 results.append("")
-                results.append("🔍 **Context Detection Results:**")
-                results.append(f"📁 **Analyzing**: {base_path}")
-                results.append("❌ **Issue**: This appears to be the MCP server's directory, not your project")
+                results.append("🔍 **Issue Detected**: Cloud server cannot access your local project files")
+                results.append("💡 **Solution**: Switching to hybrid analysis mode")
                 results.append("")
-                results.append("💡 **How to Fix This:**")
-                results.append("1. **Specify your project path explicitly**: Try prompts like:")
-                results.append("   - `\"Document the project at C:\\path\\to\\your\\project\"`")
-                results.append("   - `\"Analyze my React project in C:\\Users\\YourName\\Projects\\MyApp\"`")
-                results.append("2. **Use descriptive prompts**: Include your project name or location")
-                results.append("3. **Consider the local version**: For direct file access without path specification")
+                results.append("📥 **Step 1: Download Companion Script**")
+                results.append("Preparing local companion for your project analysis...")
                 results.append("")
-                results.append("📋 **Example Commands:**")
-                results.append("```")
-                results.append("Document the Next.js project at C:\\D\\RND\\my-portfolio")
-                results.append("Analyze the React project in /Users/john/Projects/my-app")
-                results.append("Generate documentation for the Laravel project located at /var/www/html")
-                results.append("```")
-                results.append("")
-                results.append("🔄 **Continuing with current directory analysis for demonstration...**")
-                results.append("")
-            else:
+                
+                # Generate companion download
+                companion_result = self._download_companion("auto")
+                if companion_result.get('success'):
+                    results.append("✅ **Companion Ready for Download**")
+                    results.append(f"📦 **Size**: {companion_result['size']:,} bytes")
+                    results.append(f"🔒 **Security**: {companion_result['checksum']}")
+                    results.append("")
+                    results.append("📋 **Instructions to Get Documentation of YOUR Project:**")
+                    results.append("")
+                    results.append("**Windows:**")
+                    results.append("```cmd")
+                    results.append("# 1. Save companion script")
+                    results.append("# Copy the script content below and save as 'companion.py'")
+                    results.append("")
+                    results.append("# 2. Navigate to YOUR project directory")
+                    results.append("cd C:\\path\\to\\your\\project")
+                    results.append("")
+                    results.append("# 3. Run analysis")
+                    results.append("python companion.py --project-path . --output analysis.json")
+                    results.append("")
+                    results.append("# 4. Get AI-powered documentation")
+                    results.append("# Use 'orchestrate_hybrid_analysis' tool with analysis.json content")
+                    results.append("```")
+                    results.append("")
+                    results.append("**Mac/Linux:**")
+                    results.append("```bash")
+                    results.append("# 1. Save companion script")
+                    results.append("# Copy the script content below and save as 'companion.py'")
+                    results.append("")
+                    results.append("# 2. Navigate to YOUR project directory")
+                    results.append("cd /path/to/your/project")
+                    results.append("")
+                    results.append("# 3. Run analysis")
+                    results.append("python3 companion.py --project-path . --output analysis.json")
+                    results.append("")
+                    results.append("# 4. Get AI-powered documentation")
+                    results.append("# Use 'orchestrate_hybrid_analysis' tool with analysis.json content")
+                    results.append("```")
+                    results.append("")
+                    results.append("🔒 **Privacy Options:**")
+                    results.append("- Add `--exclude-content` flag to exclude file contents")
+                    results.append("- Only structure and metadata will be analyzed")
+                    results.append("")
+                    results.append("📄 **Companion Script Content:**")
+                    results.append("```python")
+                    results.append(companion_result['companion_script'])
+                    results.append("```")
+                    results.append("")
+                    results.append("🔄 **Alternative: Automatic Hybrid Workflow**")
+                    results.append("For easier usage, try:")
+                    results.append("1. Use `download_companion` tool to get the script")
+                    results.append("2. Run companion on your project")
+                    results.append("3. Use `orchestrate_hybrid_analysis` with the JSON output")
+                    results.append("")
+                    return '\n'.join(results)
+                else:
+                    results.append("❌ **Hybrid Mode Failed**: Companion not available")
+                    results.append("🔄 **Fallback**: Continuing with cloud-only analysis")
+                    results.append("")
+            
+            # Context detection feedback for successful detection
+            if not is_server_directory:
                 results.append("✅ **Context Detection Successful**")
                 results.append(f"📁 **Project Location**: {base_path}")
                 if original_path:
