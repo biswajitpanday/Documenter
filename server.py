@@ -1346,6 +1346,7 @@ class MCPHandler(BaseHTTPRequestHandler):
             results.append("=" * 70)
             
             # HYBRID MODE AUTO-DETECTION: Trigger when cloud limitation detected or user wants their project
+            logger.info(f"🔍 Debug: is_server_directory={is_server_directory}, user_wants_hybrid={user_wants_hybrid}, hybrid_mode={self.hybrid_mode}")
             if (is_server_directory or user_wants_hybrid) and self.hybrid_mode:
                 results.append("🌟 **HYBRID MODE ACTIVATED**")
                 results.append("")
