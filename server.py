@@ -1328,12 +1328,18 @@ class MCPHandler(BaseHTTPRequestHandler):
                 # Auto-detect current directory
                 project_path = str(Path.cwd().resolve())
                 
-                # If this is a cloud server, user almost certainly wants their project, not server analysis
-                # When users say "document this project" to a cloud MCP server, they mean THEIR project
-                server_indicators = ['opt/render/project', 'documenter', 'mcp', 'render']
-                if any(indicator in project_path.lower() for indicator in server_indicators):
+                # ENHANCED LOGIC: Cloud servers should ALWAYS assume user wants their project
+                # When users say "document this project" to a cloud MCP server, they ALWAYS mean THEIR project
+                cloud_indicators = ['opt/render/project', 'documenter', 'mcp', 'render', '/app', '/tmp', 'netlify', 'vercel']
+                is_cloud_environment = any(indicator in project_path.lower() for indicator in cloud_indicators)
+                
+                # Also check environment variables that indicate cloud deployment
+                cloud_env_vars = ['RENDER', 'VERCEL', 'NETLIFY', 'RAILWAY', 'HEROKU']
+                has_cloud_env = any(os.getenv(var) for var in cloud_env_vars)
+                
+                if is_cloud_environment or has_cloud_env:
                     user_wants_hybrid = True
-                    logger.info("🎯 Cloud server detected - user likely wants their project, not server files")
+                    logger.info(f"🎯 Cloud environment detected (path={project_path}, env={has_cloud_env}) - user wants their project, triggering hybrid mode")
             
             base_path = Path(project_path).resolve()
             
