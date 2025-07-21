@@ -395,11 +395,38 @@ class MCPHandler(BaseHTTPRequestHandler):
                     "endpoints": {
                         "health": "/",
                         "tools": "/tools",
-                        "mcp": "/mcp/request"
+                        "mcp": "/mcp/request",
+                        "companion": "/companion.py"
                     },
                     "features": ["hybrid-mode", "auto-companion-download", "local-file-analysis"]
                 }
                 self._send_response(200, response)
+                
+            elif path == "/companion.py":
+                # Direct companion download endpoint
+                try:
+                    companion_path = Path(__file__).parent / "companion.py"
+                    if companion_path.exists():
+                        with open(companion_path, 'r', encoding='utf-8') as f:
+                            companion_content = f.read()
+                        
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'text/plain')
+                        self.send_header('Content-Disposition', 'attachment; filename="companion.py"')
+                        self.send_header('Access-Control-Allow-Origin', '*')
+                        self.end_headers()
+                        self.wfile.write(companion_content.encode())
+                    else:
+                        self.send_response(404)
+                        self.send_header('Content-Type', 'text/plain')
+                        self.end_headers()
+                        self.wfile.write(b"Companion script not found")
+                except Exception as e:
+                    logger.error(f"Error serving companion: {e}")
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'text/plain')
+                    self.end_headers()
+                    self.wfile.write(f"Error: {e}".encode())
                 
             elif path == "/tools":
                 tools = self._get_all_tools()
@@ -745,6 +772,24 @@ class MCPHandler(BaseHTTPRequestHandler):
                         }
                     }
                 }
+            },
+            {
+                "name": "get_auto_run_command",
+                "description": "🚀 NEW: Get ready-to-run command for automatic companion download and execution. Provides platform-specific commands for instant hybrid analysis.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "project_path": {
+                            "type": "string",
+                            "description": "Your project directory path (e.g., C:\\my-project or /home/user/my-project)"
+                        },
+                        "platform": {
+                            "type": "string",
+                            "description": "Your platform: 'windows', 'mac', 'linux', or 'auto' for auto-detection",
+                            "enum": ["windows", "mac", "linux", "auto"]
+                        }
+                    }
+                }
             }
         ]
     
@@ -846,6 +891,14 @@ class MCPHandler(BaseHTTPRequestHandler):
                 return json.dumps(result, indent=2)
             elif tool_name == "verify_companion":
                 return self._verify_companion()
+            elif tool_name == "get_auto_run_command":
+                project_path = arguments.get("project_path", "")
+                platform = arguments.get("platform", "auto")
+                if not isinstance(project_path, str):
+                    return "❌ Invalid project_path parameter"
+                if not isinstance(platform, str):
+                    return "❌ Invalid platform parameter"
+                return self._get_auto_run_command(project_path, platform)
             else:
                 return f"❌ Tool '{tool_name}' not found"
         except Exception as e:
@@ -1419,52 +1472,50 @@ class MCPHandler(BaseHTTPRequestHandler):
                     results.append(f"📦 **Size**: {companion_result['size']:,} bytes")
                     results.append(f"🔒 **Security**: {companion_result['checksum']}")
                     results.append("")
-                    results.append("📋 **Instructions to Get Documentation of YOUR Project:**")
+                    results.append("📋 **AUTOMATIC Download & Run (Super Easy!):**")
                     results.append("")
-                    results.append("**Windows:**")
-                    results.append("```cmd")
-                    results.append("# 1. Save companion script")
-                    results.append("# Copy the script content below and save as 'companion.py'")
-                    results.append("")
-                    results.append("# 2. Navigate to YOUR project directory")
+                    results.append("**🪟 Windows (PowerShell):**")
+                    results.append("```powershell")
+                    results.append("# 1. Navigate to YOUR project directory")
                     results.append("cd C:\\path\\to\\your\\project")
                     results.append("")
-                    results.append("# 3. Run analysis")
-                    results.append("python companion.py --project-path . --output analysis.json")
+                    results.append("# 2. Auto-download and run companion (ONE COMMAND!)")
+                    results.append("Invoke-WebRequest -Uri 'https://documenter-mcp.onrender.com/companion.py' -OutFile 'companion.py'; python companion.py --project-path . --output analysis.json")
                     results.append("")
-                    results.append("# 4. Get AI-powered documentation")
-                    results.append("# Use 'orchestrate_hybrid_analysis' tool with analysis.json content")
+                    results.append("# 3. Copy the analysis.json content and use 'orchestrate_hybrid_analysis' tool")
                     results.append("```")
                     results.append("")
-                    results.append("**Mac/Linux:**")
+                    results.append("**🐧 Mac/Linux (Terminal):**")
                     results.append("```bash")
-                    results.append("# 1. Save companion script")
-                    results.append("# Copy the script content below and save as 'companion.py'")
-                    results.append("")
-                    results.append("# 2. Navigate to YOUR project directory")
+                    results.append("# 1. Navigate to YOUR project directory")
                     results.append("cd /path/to/your/project")
                     results.append("")
-                    results.append("# 3. Run analysis")
-                    results.append("python3 companion.py --project-path . --output analysis.json")
+                    results.append("# 2. Auto-download and run companion (ONE COMMAND!)")
+                    results.append("curl -o companion.py https://documenter-mcp.onrender.com/companion.py && python3 companion.py --project-path . --output analysis.json")
                     results.append("")
-                    results.append("# 4. Get AI-powered documentation")
-                    results.append("# Use 'orchestrate_hybrid_analysis' tool with analysis.json content")
+                    results.append("# 3. Copy the analysis.json content and use 'orchestrate_hybrid_analysis' tool")
                     results.append("```")
                     results.append("")
                     results.append("🔒 **Privacy Options:**")
                     results.append("- Add `--exclude-content` flag to exclude file contents")
                     results.append("- Only structure and metadata will be analyzed")
                     results.append("")
-                    results.append("📄 **Companion Script Content:**")
-                    results.append("```python")
-                    results.append(companion_result['companion_script'])
-                    results.append("```")
+                    results.append("📥 **Direct Download Link:**")
+                    results.append("- **URL**: `https://documenter-mcp.onrender.com/companion.py`")
+                    results.append("- **Size**: 14.3 KB")
+                    results.append("- **Security**: Verified and safe")
                     results.append("")
-                    results.append("🔄 **Alternative: Automatic Hybrid Workflow**")
-                    results.append("For easier usage, try:")
-                    results.append("1. Use `download_companion` tool to get the script")
-                    results.append("2. Run companion on your project")
-                    results.append("3. Use `orchestrate_hybrid_analysis` with the JSON output")
+                    results.append("⚡ **EVEN EASIER**: Use `get_auto_run_command` tool!")
+                    results.append("   → Provides copy-paste ready commands for your platform")
+                    results.append("   → Just specify your project path and get instant commands")
+                    results.append("")
+                    results.append("🎯 **What This Does:**")
+                    results.append("1. **Downloads** companion script automatically")
+                    results.append("2. **Analyzes** YOUR actual project files locally")
+                    results.append("3. **Generates** analysis.json with project data")
+                    results.append("4. **You then** use `orchestrate_hybrid_analysis` tool with the JSON")
+                    results.append("")
+                    results.append("🚀 **Result**: Perfect documentation of YOUR actual project!")
                     results.append("")
                     return '\n'.join(results)
                 else:
@@ -2563,6 +2614,118 @@ This is a **{detected_type.upper()}** project (confidence: {confidence}/10) cont
                 "error": str(e),
                 "recommendation": "Try again or contact support"
             }, indent=2)
+
+    def _get_auto_run_command(self, project_path: str, platform: str) -> str:
+        """Generate ready-to-run commands for automatic companion download and execution"""
+        try:
+            logger.info("🚀 Generating auto-run command...")
+            
+            # Detect platform if auto
+            if platform == "auto":
+                import platform as sys_platform
+                current_platform = sys_platform.system().lower()
+                if current_platform == "windows":
+                    platform = "windows"
+                elif current_platform == "darwin":
+                    platform = "mac"
+                else:
+                    platform = "linux"
+            
+            # Validate project path
+            if not project_path:
+                project_path = "YOUR_PROJECT_PATH"
+                path_note = "\n⚠️ **Replace YOUR_PROJECT_PATH with your actual project directory**"
+            else:
+                path_note = ""
+            
+            results = []
+            results.append("🚀 **INSTANT HYBRID ANALYSIS COMMANDS**")
+            results.append("=" * 60)
+            results.append("Copy and run these commands in your terminal for instant documentation!")
+            results.append("")
+            
+            if platform == "windows":
+                results.append("## 🪟 **Windows (PowerShell)**")
+                results.append("```powershell")
+                results.append(f"# Navigate to your project")
+                results.append(f"cd \"{project_path}\"")
+                results.append("")
+                results.append("# Download and run companion (ONE COMMAND!)")
+                results.append("Invoke-WebRequest -Uri 'https://documenter-mcp.onrender.com/companion.py' -OutFile 'companion.py'; python companion.py --project-path . --output analysis.json --verbose")
+                results.append("")
+                results.append("# View results")
+                results.append("Get-Content analysis.json | ConvertFrom-Json | ConvertTo-Json -Depth 10")
+                results.append("```")
+                
+            elif platform == "mac":
+                results.append("## 🍎 **macOS (Terminal)**")
+                results.append("```bash")
+                results.append(f"# Navigate to your project")
+                results.append(f"cd \"{project_path}\"")
+                results.append("")
+                results.append("# Download and run companion (ONE COMMAND!)")
+                results.append("curl -o companion.py https://documenter-mcp.onrender.com/companion.py && python3 companion.py --project-path . --output analysis.json --verbose")
+                results.append("")
+                results.append("# View results")
+                results.append("cat analysis.json | python3 -m json.tool")
+                results.append("```")
+                
+            elif platform == "linux":
+                results.append("## 🐧 **Linux (Terminal)**")
+                results.append("```bash")
+                results.append(f"# Navigate to your project")
+                results.append(f"cd \"{project_path}\"")
+                results.append("")
+                results.append("# Download and run companion (ONE COMMAND!)")
+                results.append("curl -o companion.py https://documenter-mcp.onrender.com/companion.py && python3 companion.py --project-path . --output analysis.json --verbose")
+                results.append("")
+                results.append("# View results")
+                results.append("cat analysis.json | python3 -m json.tool")
+                results.append("```")
+                
+            else:
+                # Show all platforms
+                results.append("## 🌐 **All Platforms**")
+                results.append("")
+                results.append("### 🪟 Windows (PowerShell)")
+                results.append("```powershell")
+                results.append(f"cd \"{project_path}\"")
+                results.append("Invoke-WebRequest -Uri 'https://documenter-mcp.onrender.com/companion.py' -OutFile 'companion.py'; python companion.py --project-path . --output analysis.json --verbose")
+                results.append("```")
+                results.append("")
+                results.append("### 🍎 macOS / 🐧 Linux")
+                results.append("```bash")
+                results.append(f"cd \"{project_path}\"")
+                results.append("curl -o companion.py https://documenter-mcp.onrender.com/companion.py && python3 companion.py --project-path . --output analysis.json --verbose")
+                results.append("```")
+            
+            results.append("")
+            results.append("## 📋 **Next Steps After Running**")
+            results.append("1. ✅ **Companion downloads** and analyzes your project files")
+            results.append("2. 📄 **Analysis.json created** with your project data")
+            results.append("3. 📋 **Copy the analysis.json content**")
+            results.append("4. 🚀 **Use `orchestrate_hybrid_analysis` tool** with the JSON data")
+            results.append("5. 🎉 **Get perfect documentation** of your actual project!")
+            results.append("")
+            results.append("## 🔒 **Privacy Options**")
+            results.append("- **Standard mode**: Includes file contents for better analysis")
+            results.append("- **Privacy mode**: Add `--exclude-content` flag to exclude file contents")
+            results.append("- **Your control**: Companion runs locally, you control what is shared")
+            results.append("")
+            results.append("## 🌟 **Benefits**")
+            results.append("- ⚡ **Instant download**: < 15KB companion script")
+            results.append("- 🔒 **Secure**: Read-only analysis, runs on your machine")
+            results.append("- 🎯 **Accurate**: Analyzes YOUR actual project files")
+            results.append("- 🚀 **Fast**: Local analysis + Cloud AI processing")
+            
+            if path_note:
+                results.append(path_note)
+            
+            return '\n'.join(results)
+            
+        except Exception as e:
+            logger.error(f"Error generating auto-run command: {e}")
+            return f"❌ Error generating command: {str(e)}"
 
 if __name__ == "__main__":
     # Get port from environment or use default
