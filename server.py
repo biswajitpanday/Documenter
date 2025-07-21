@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Documenter MCP Server - Simplified and Optimized
-A complete MCP server for project documentation with all tools from main.py
+Documenter MCP Server - Hybrid Architecture v3.1.0
+A complete MCP server for project documentation with hybrid cloud-local analysis
+DEPLOYMENT FORCE UPDATE: 2024-12-19 19:30 UTC
 """
 
 import json
@@ -387,7 +388,7 @@ class MCPHandler(BaseHTTPRequestHandler):
             if path == "/":
                 response = {
                     "name": "Documenter MCP Server",
-                    "version": "3.0.0-hybrid",
+                    "version": "3.1.0-hybrid-fixed",
                     "status": "running",
                     "description": "Intelligent documentation generator for any project type - HYBRID ARCHITECTURE",
                     "platform": "Render",
