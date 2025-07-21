@@ -854,8 +854,24 @@ class MCPHandler(BaseHTTPRequestHandler):
     
     # Tool implementations (simplified versions from main.py)
     def _detect_project_type(self, base_path: str) -> str:
-        """Detect project type with enhanced accuracy"""
+        """Detect project type with enhanced accuracy - HYBRID AWARE"""
         try:
+            # HYBRID MODE DETECTION: If on cloud and analyzing "." (server dir), trigger hybrid
+            if base_path == ".":
+                current_path = str(Path.cwd().resolve())
+                cloud_indicators = ['opt/render/project', 'documenter', 'mcp', 'render', '/app', '/tmp']
+                is_cloud_env = any(indicator in current_path.lower() for indicator in cloud_indicators)
+                cloud_env_vars = ['RENDER', 'VERCEL', 'NETLIFY', 'RAILWAY', 'HEROKU']
+                has_cloud_env = any(os.getenv(var) for var in cloud_env_vars)
+                
+                if is_cloud_env or has_cloud_env:
+                    return ("🌟 **HYBRID MODE NEEDED** for Project Type Detection\n\n"
+                           "🔍 **Issue**: Cloud server cannot access your local project files\n"
+                           "💡 **Solution**: Use `document_project_comprehensive` for automatic hybrid analysis\n\n"
+                           "📋 **Quick Fix**: Try this command instead:\n"
+                           "   → `\"Document this project comprehensively\"`\n\n"
+                           "This will automatically download the companion and analyze YOUR project files! 🚀")
+            
             base_path = Path(base_path).resolve()
             detected_types = []
             
@@ -997,8 +1013,24 @@ class MCPHandler(BaseHTTPRequestHandler):
             return f"Error writing to file '{file_path}': {e}"
     
     def _analyze_project_structure(self, base_path: str) -> str:
-        """Analyze project structure"""
+        """Analyze project structure - HYBRID AWARE"""
         try:
+            # HYBRID MODE DETECTION: If on cloud and analyzing "." (server dir), trigger hybrid
+            if base_path == ".":
+                current_path = str(Path.cwd().resolve())
+                cloud_indicators = ['opt/render/project', 'documenter', 'mcp', 'render', '/app', '/tmp']
+                is_cloud_env = any(indicator in current_path.lower() for indicator in cloud_indicators)
+                cloud_env_vars = ['RENDER', 'VERCEL', 'NETLIFY', 'RAILWAY', 'HEROKU']
+                has_cloud_env = any(os.getenv(var) for var in cloud_env_vars)
+                
+                if is_cloud_env or has_cloud_env:
+                    return ("🌟 **HYBRID MODE NEEDED** for Project Structure Analysis\n\n"
+                           "🔍 **Issue**: Cloud server cannot access your local project files\n"
+                           "💡 **Solution**: Use `document_project_comprehensive` for automatic hybrid analysis\n\n"
+                           "📋 **Quick Fix**: Try this command instead:\n"
+                           "   → `\"Document this project comprehensively\"`\n\n"
+                           "This will automatically download the companion and analyze YOUR project files! 🚀")
+            
             base_path = Path(base_path).resolve()
             project_info = self._detect_project_type(str(base_path))
             
@@ -1043,8 +1075,24 @@ class MCPHandler(BaseHTTPRequestHandler):
             return f"Error analyzing project structure: {e}"
     
     def _analyze_package_json(self, file_path: str) -> str:
-        """Analyze package.json"""
+        """Analyze package.json - HYBRID AWARE"""
         try:
+            # HYBRID MODE DETECTION: If on cloud and looking for package.json in server dir, trigger hybrid
+            if file_path == "package.json" or file_path == "./package.json":
+                current_path = str(Path.cwd().resolve())
+                cloud_indicators = ['opt/render/project', 'documenter', 'mcp', 'render', '/app', '/tmp']
+                is_cloud_env = any(indicator in current_path.lower() for indicator in cloud_indicators)
+                cloud_env_vars = ['RENDER', 'VERCEL', 'NETLIFY', 'RAILWAY', 'HEROKU']
+                has_cloud_env = any(os.getenv(var) for var in cloud_env_vars)
+                
+                if is_cloud_env or has_cloud_env:
+                    return ("🌟 **HYBRID MODE NEEDED** for Package.json Analysis\n\n"
+                           "🔍 **Issue**: Cloud server cannot access your local project files\n"
+                           "💡 **Solution**: Use `document_project_comprehensive` for automatic hybrid analysis\n\n"
+                           "📋 **Quick Fix**: Try this command instead:\n"
+                           "   → `\"Document this project comprehensively\"`\n\n"
+                           "This will automatically download the companion and analyze YOUR project files! 🚀")
+            
             path = Path(file_path)
             if not path.is_absolute():
                 path = Path.cwd() / path
